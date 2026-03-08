@@ -1,5 +1,5 @@
 {
-  "name": "mercadolibre-mcp",
+  "name": "@dan1d/mercadolibre-mcp",
   "version": "1.0.0",
   "description": "MercadoLibre MCP server for AI agents. Search products, browse categories, track trends across Latin America.",
   "main": "dist/index.js",
@@ -10,7 +10,12 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist", "bin", "README.md", "LICENSE"],
+  "files": [
+    "dist",
+    "bin",
+    "README.md",
+    "LICENSE"
+  ],
   "bin": {
     "mercadolibre-mcp": "./bin/mcp-server.mjs"
   },
@@ -25,7 +30,9 @@
     "type": "git",
     "url": "https://github.com/dan1d/mercadolibre-mcp.git"
   },
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
     "zod": "^3.23.0"
