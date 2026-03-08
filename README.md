@@ -3,6 +3,8 @@
 **MercadoLibre marketplace for AI agents.**
 
 [![npm version](https://img.shields.io/npm/v/@dan1d/mercadolibre-mcp)](https://www.npmjs.com/package/@dan1d/mercadolibre-mcp)
+[![tests](https://img.shields.io/github/actions/workflow/status/dan1d/mercadolibre-mcp/ci.yml?label=tests)](https://github.com/dan1d/mercadolibre-mcp/actions)
+[![npm downloads](https://img.shields.io/npm/dm/@dan1d/mercadolibre-mcp)](https://www.npmjs.com/package/@dan1d/mercadolibre-mcp)
 [![license](https://img.shields.io/npm/l/@dan1d/mercadolibre-mcp)](./LICENSE)
 
 MCP server that connects AI agents to [MercadoLibre](https://www.mercadolibre.com), the largest e-commerce marketplace in Latin America (150M+ users). Search products, get item details, browse categories, track trends, and convert currencies across Argentina, Brazil, Mexico, Chile, Colombia, and more.
@@ -190,4 +192,4 @@ const conversion = await ml.tools.get_currency_conversion({
 
 ## License
 
-MIT
+[MIT](./LICENSE) -- by [dan1d](https://dan1d.dev/)
