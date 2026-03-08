@@ -1,6 +1,6 @@
 {
   "name": "@dan1d/mercadolibre-mcp",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "MercadoLibre MCP server for AI agents. Search products, browse categories, track trends across Latin America.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
