@@ -1,6 +1,6 @@
 # Changelog — @kolmena-ai/meli-mcp
 
-## 1.3.0-kolmena.0
+## 1.3.0
 
 - **Listing creation (3 tools):** `seller_upload_listing_picture`, `seller_validate_listing`, `seller_create_listing`.
 - **`MercadoLibreClient`:** `postJson`, `postValidate` (204/400), `postMultipart` for picture upload.
