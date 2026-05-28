@@ -2,39 +2,28 @@
 
 ## 1.3.0
 
-- **Listing creation (3 tools):** `seller_upload_listing_picture`, `seller_validate_listing`, `seller_create_listing`.
-- **`MercadoLibreClient`:** `postJson`, `postValidate` (204/400), `postMultipart` for picture upload.
-- Tool count: **76** (36 buyer + 40 seller).
+First release under the `@kolmena-ai/` scope. Fork of [`@dan1d/mercadolibre-mcp@1.0.2`](https://www.npmjs.com/package/@dan1d/mercadolibre-mcp) (8 buyer tools) expanded to **77 tools** (36 buyer + 41 seller).
 
-## 1.2.0-kolmena.0
+### Buyer
 
-- **Seller suite (37 new `seller_*` tools)** — store snapshot, listings audit, inventory, orders, shipments, Q&A, promotions, messages, claims, feedback. See [SELLER-API-ROADMAP.md](./SELLER-API-ROADMAP.md).
-- **HTTP PUT** on `MercadoLibreClient` for listing updates.
-- **Ownership checks** on `seller_get_my_item`, `seller_get_order`, bulk items.
-- Tool count: **73** (36 buyer + 37 seller).
-- Kolmena: **`meli-seller` skill** replaces **`meli-api`** (MCP `CALL_MCP_TOOL` only).
+- **Catalog search rewrite** — `search_items` now hits `GET /products/search` (token-bound) instead of the upstream `GET /sites/{site}/search?q=` which started returning 403 for many apps. Response is wrapped with `search_api` / `result_type: catalog_product` so callers can tell which API answered.
+- **Catalog fallback** — `get_item` and `get_item_description` fall back to `GET /products/{id}` when `/items/{id}` returns 404, so catalog ids returned by `search_items` (e.g. `MLA55016525`) work without an extra round trip.
+- **`get_product`** — explicit `GET /products/{id}` for catalog datasheets.
+- **Buyer suite (27 new tools)** — compare, reviews, shipping, Q&A, orders, shipments, claims, domain discovery, official stores, seller response time, etc.
+- **`search_buyable_listings`** — composite workaround for the blocked legacy search: catalog → buy box → price filter → optional seller reputation. Use this for "listings under $X with seller ratings" workflows.
+- **`search_listings`** — still tries the legacy endpoint; on 403 returns a structured fallback hint pointing at `search_buyable_listings`.
+- **`compare_products`** — bulk compare with optional reviews and shipping.
+- Most buyer / post-purchase calls now require `MERCADOLIBRE_ACCESS_TOKEN`.
 
-## 1.1.0-kolmena.0
+### Seller (new in this fork)
 
-- **Buyer suite (27 new tools)** — compare, reviews, shipping, Q&A, orders, claims, domain discovery, official stores, etc.
-- **`search_buyable_listings`** — composite workaround for blocked `sites/search?q=` (catalog → buy box → price filter → seller reputation).
-- **`search_listings`** — tries legacy search; on 403 returns fallback to `search_buyable_listings`.
-- **`compare_products`** — bulk compare with optional reviews/shipping.
-- Tool count: **36** (was 9).
-- Requires `MERCADOLIBRE_ACCESS_TOKEN` for most buyer/post-purchase calls.
+- **41 `seller_*` tools** — store snapshot, listings audit, inventory, orders, shipments, Q&A, promotions, messages, claims, feedback. Full mapping in [SELLER-API-ROADMAP.md](./SELLER-API-ROADMAP.md).
+- **Listing creation** — `seller_get_listing_requirements`, `seller_upload_listing_picture`, `seller_validate_listing`, `seller_create_listing`.
+- **Ownership checks** on `seller_get_my_item`, `seller_get_order`, and bulk variants — synthetic 403 if the token doesn't match `seller_id`.
 
-## 1.0.4-kolmena.0
+### Client / infrastructure
 
-- **`get_product`** — `GET /products/{id}` for catalog ids from `search_items`.
-- **`get_item` / `get_item_description`** — auto-fallback to catalog product when `/items/...` returns 404 (fixes 404 on ids like `MLA55016525` from search).
-- Tool count: **9** (was 8 upstream).
-
-## 1.0.3-kolmena.0
-
-- **`search_items`** — uses `GET /products/search` (`site_id`, `status=active`, `q`) instead of blocked `GET /sites/{site}/search?q=`.
-- Response wrapper documents `search_api` and `result_type: catalog_product`.
-
-## 1.0.2-kolmena.0
-
-- Initial Kolmena fork from `@dan1d/mercadolibre-mcp@1.0.2`.
-- Package rename, `meli-mcp` binary alias, `TESTING.md`, MCP Inspector scripts.
+- **`MercadoLibreClient`** gains `postJson`, `postValidate` (204 / 400 discriminated union for `/items/validate`), `postMultipart` (picture upload), and HTTP `PUT` for listing updates.
+- Package renamed to `@kolmena-ai/meli-mcp`; binaries `mercadolibre-mcp` and `meli-mcp` share the same entrypoint.
+- Local dev: `npm run inspector` / `inspector:auth` for MCP Inspector, `npm run smoke` for CLI smoke of every tool, see [TESTING.md](./TESTING.md).
+- Kolmena backend: `meli-buyer` + `meli-seller` skills consume this MCP via `CALL_MCP_TOOL`; the old `meli-api` skill is deprecated.
