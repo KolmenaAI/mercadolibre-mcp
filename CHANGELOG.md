@@ -1,5 +1,47 @@
 # Changelog — @kolmena-ai/meli-mcp
 
+## 1.4.0
+
+Toolchain modernization release — Node 24 + pnpm 11, major dependency bumps, and zero open vulnerabilities. Behavior of the 77 MCP tools is unchanged.
+
+### Breaking
+
+- **Node.js `>=24`** (was `>=18`). Node 18 (EOL April 2025) and Node 20 (EOL April 2026) are no longer supported. CI runs on Node 24; the Docker base image is `node:24.16.0-alpine3.23`.
+- **`zod` upgraded from 3.x to 4.x.** Exported parameter types (e.g. `SearchItemsParams`, `SellerCreateListingParams`) are now inferred via zod 4, which changes a few subtle behaviors at the validation layer. Programmatic consumers should bump their own `zod` to `^4` to share a single resolved version.
+- **`mcp-proxy.docker.json`**: the embedded server config now sets `panicIfInvalid: true` — the proxy refuses to start when the MCP server config is invalid instead of running in a degraded state. Operators who relied on the proxy starting anyway should validate their config first.
+
+### Security
+
+- **0 known vulnerabilities** (`pnpm audit` / `npm audit` clean).
+- Fixed 14 advisories that were open against 1.3.0 — 2 high (`fast-uri`, `path-to-regexp`) and 12 moderate (`hono`, `qs`, `ip-address`, `esbuild`, `postcss`, `brace-expansion`, etc.). All traced to two roots: an out-of-date MCP SDK (1.27.1 → 1.29.0) and an out-of-date test stack (vitest 1.6.1 → 4.1.7).
+- Adopted **pnpm 11's tightened defaults** for supply-chain safety: `minimumReleaseAge: 1440` (24h quarantine on freshly published versions), `strictDepBuilds: true` (lifecycle scripts refused unless allowlisted), `blockExoticSubdeps: true` (blocks transitive git/file refs).
+
+### Toolchain (dev / CI)
+
+- **Migrated from npm to pnpm 11.4.0**, pinned via `"packageManager": "pnpm@11.4.0"` in `package.json`.
+- `package-lock.json` replaced by `pnpm-lock.yaml`. The new lockfile records cross-platform optional dependencies correctly, fixing a latent class of Docker-build failures where `npm ci` rejected the host-generated lockfile on Linux due to missing `@emnapi/core` etc.
+- Single-package `pnpm-workspace.yaml` added so `pnpm deploy --legacy --prod /prod` can produce a self-contained runtime tree.
+- **CI workflow** rewritten: `pnpm/action-setup@v4` + `actions/setup-node@v4` with `cache: pnpm`; runs `pnpm install --frozen-lockfile && pnpm test && pnpm build && pnpm exec tsc --noEmit` on Node 24.
+- **Dependency bumps**:
+  - `@modelcontextprotocol/sdk` 1.27.1 → 1.29.0
+  - `typescript` 5.4 → 6.0.3 (major)
+  - `vitest` + `@vitest/coverage-v8` 1.6.1 → 4.1.7 (three major versions)
+
+### Runtime / Docker
+
+- **Dockerfile rewrite** around pnpm:
+  - Stage 1 installs pnpm via `npm install -g pnpm@11.4.0` (no corepack reliance — corepack is `experimental` in current Node and on track to be removed from core).
+  - BuildKit cache mounts on the pnpm store make repeat builds near-instant.
+  - `pnpm deploy --legacy --filter=@kolmena-ai/meli-mcp --prod /prod` produces a self-contained prod tree with no symlinks back to the pnpm store.
+  - Stage 3 is a straight `COPY --from=build /prod /app` — no second install in the runtime stage.
+- **`.dockerignore` added** — filters `node_modules`, `dist`, `coverage`, `.git`, `.idea`, `tests`, `.env*`. Stops host artifacts from leaking into the build context.
+- Final image size unchanged (~184 MB, Node base layer dominates).
+
+### Fixes
+
+- `src/mcp-seller-tools.ts:411` — `seller_submit_claim_action` `payload` schema updated from `z.record(valueSchema)` (zod 3) to `z.record(z.string(), valueSchema)` (zod 4 requires explicit key schema).
+- Restored `zod` to `dependencies` after it was briefly moved to `devDependencies` — `src/mcp-tools.ts` imports it at runtime and `pnpm deploy --prod` would otherwise ship a broken package.
+
 ## 1.3.0
 
 First release under the `@kolmena-ai/` scope. Fork of [`@dan1d/mercadolibre-mcp@1.0.2`](https://www.npmjs.com/package/@dan1d/mercadolibre-mcp) (8 buyer tools) expanded to **77 tools** (36 buyer + 41 seller).
