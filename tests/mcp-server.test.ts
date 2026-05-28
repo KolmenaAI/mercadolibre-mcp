@@ -38,21 +38,18 @@ describe("MCP Server", () => {
     expect(server).toBeDefined();
   });
 
-  it("registers all 8 tools", async () => {
+  it("registers buyer and seller tools", async () => {
     const { client } = await setupMcpClient();
     const result = await client.listTools();
     const names = result.tools.map((t) => t.name).sort();
 
-    expect(names).toEqual([
-      "get_categories",
-      "get_category",
-      "get_currency_conversion",
-      "get_item",
-      "get_item_description",
-      "get_seller_info",
-      "get_trends",
-      "search_items",
-    ]);
+    expect(names).toContain("search_buyable_listings");
+    expect(names).toContain("compare_products");
+    expect(names).toContain("get_my_orders");
+    expect(names).toContain("seller_get_me");
+    expect(names).toContain("seller_get_store_snapshot");
+    expect(names).toContain("seller_search_orders");
+    expect(names.length).toBeGreaterThanOrEqual(65);
 
     await client.close();
   });
@@ -74,7 +71,8 @@ describe("MCP Server", () => {
 
       const result = await client.callTool({ name: "get_item", arguments: { item_id: "MLA123" } });
       const text = (result.content as Array<{ text: string }>)[0].text;
-      expect(JSON.parse(text).id).toBe("MLA123");
+      const parsed = JSON.parse(text) as { item: { id: string } };
+      expect(parsed.item.id).toBe("MLA123");
       await client.close();
     });
 
@@ -84,7 +82,8 @@ describe("MCP Server", () => {
 
       const result = await client.callTool({ name: "get_item_description", arguments: { item_id: "MLA123" } });
       const text = (result.content as Array<{ text: string }>)[0].text;
-      expect(JSON.parse(text).plain_text).toBe("A product");
+      const parsed = JSON.parse(text) as { description: { plain_text: string } };
+      expect(parsed.description.plain_text).toBe("A product");
       await client.close();
     });
 
@@ -149,7 +148,8 @@ describe("MCP Server", () => {
       await client.close();
     });
 
-    it("get_item returns error on 404", async () => {
+    it("get_item returns error when listing and catalog are missing", async () => {
+      mockFetch.mockResolvedValueOnce(new Response("Not Found", { status: 404 }));
       mockFetch.mockResolvedValueOnce(new Response("Not Found", { status: 404 }));
       const { client } = await setupMcpClient();
 
@@ -158,7 +158,8 @@ describe("MCP Server", () => {
       await client.close();
     });
 
-    it("get_item_description returns error on failure", async () => {
+    it("get_item_description returns error when listing and catalog are missing", async () => {
+      mockFetch.mockResolvedValueOnce(new Response("Not Found", { status: 404 }));
       mockFetch.mockResolvedValueOnce(new Response("Not Found", { status: 404 }));
       const { client } = await setupMcpClient();
 

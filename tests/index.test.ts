@@ -11,28 +11,30 @@ function jsonResponse(data: unknown, status = 200) {
 }
 
 describe("createMercadoLibreTools", () => {
-  it("creates all 8 tool functions", async () => {
+  it("creates all tool functions including buyer suite", async () => {
     const { createMercadoLibreTools } = await import("../src/index.js");
     const { tools } = createMercadoLibreTools();
 
     expect(typeof tools.search_items).toBe("function");
-    expect(typeof tools.get_item).toBe("function");
-    expect(typeof tools.get_item_description).toBe("function");
-    expect(typeof tools.get_categories).toBe("function");
-    expect(typeof tools.get_category).toBe("function");
-    expect(typeof tools.get_seller_info).toBe("function");
-    expect(typeof tools.get_trends).toBe("function");
-    expect(typeof tools.get_currency_conversion).toBe("function");
+    expect(typeof tools.search_buyable_listings).toBe("function");
+    expect(typeof tools.get_product_buybox).toBe("function");
+    expect(typeof tools.get_items_bulk).toBe("function");
+    expect(typeof tools.compare_products).toBe("function");
+    expect(typeof tools.get_my_orders).toBe("function");
+    expect(typeof tools.search_my_claims).toBe("function");
+    expect(typeof tools.seller_get_me).toBe("function");
+    expect(typeof tools.seller_get_store_snapshot).toBe("function");
+    expect(Object.keys(tools).length).toBeGreaterThanOrEqual(65);
   });
 
   it("tools call the API correctly", async () => {
     const { createMercadoLibreTools } = await import("../src/index.js");
     const { tools } = createMercadoLibreTools("TEST_TOKEN");
 
-    mockFetch.mockResolvedValueOnce(jsonResponse({ results: [] }));
+    mockFetch.mockResolvedValueOnce(jsonResponse({ results: [], paging: { total: 0, limit: 10, offset: 0 } }));
     await tools.search_items({ query: "test" });
     expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining("/sites/MLA/search"),
+      expect.stringContaining("/products/search"),
       expect.objectContaining({
         headers: expect.objectContaining({ Authorization: "Bearer TEST_TOKEN" }),
       })

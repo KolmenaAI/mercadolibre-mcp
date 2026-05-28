@@ -1,4 +1,6 @@
-# mercadolibre-mcp
+# @kolmena-ai/meli-mcp
+
+> **Kolmena fork** of [dan1d/mercadolibre-mcp](https://github.com/dan1d/mercadolibre-mcp). See [FORK.md](./FORK.md) for upstream sync and local dev.
 
 **MercadoLibre marketplace for AI agents.**
 
@@ -7,15 +9,34 @@
 [![npm downloads](https://img.shields.io/npm/dm/@dan1d/mercadolibre-mcp)](https://www.npmjs.com/package/@dan1d/mercadolibre-mcp)
 [![license](https://img.shields.io/npm/l/@dan1d/mercadolibre-mcp)](./LICENSE)
 
-MCP server that connects AI agents to [MercadoLibre](https://www.mercadolibre.com), the largest e-commerce marketplace in Latin America (150M+ users). Search products, get item details, browse categories, track trends, and convert currencies across Argentina, Brazil, Mexico, Chile, Colombia, and more.
+MCP server that connects AI agents to [MercadoLibre](https://www.mercadolibre.com), the largest e-commerce marketplace in Latin America (150M+ users). Search catalog products, get product details, browse categories, track trends, and convert currencies across Argentina, Brazil, Mexico, Chile, Colombia, and more.
 
-[npm](https://www.npmjs.com/package/@dan1d/mercadolibre-mcp) | [GitHub](https://github.com/dan1d/mercadolibre-mcp)
+**Kolmena docs:** [TESTING.md](./TESTING.md) · [BUYER-API-ROADMAP.md](./BUYER-API-ROADMAP.md) · [HANDOFF.md](./HANDOFF.md) · [CHANGELOG.md](./CHANGELOG.md)
 
 ---
 
-## Quick Start
+## Kolmena buyer workflow
 
-No API key required for public endpoints (search, items, categories, trends).
+Most calls need `MERCADOLIBRE_ACCESS_TOKEN` (OAuth `APP_USR-...`).
+
+1. **`search_items`** — keyword search → `results[].id` are **catalog product ids**
+2. **`get_product`** — full datasheet for that id (recommended)
+3. **`get_item`** / **`get_item_description`** — same id works (auto-fallback to catalog if not a listing)
+4. Use **`product.permalink`** from the response as the buyer link
+
+Ids from search are **not** marketplace listing ids; `/items/MLA55016525` alone will 404 without fallback.
+
+```bash
+npm install && npm run build
+export MERCADOLIBRE_ACCESS_TOKEN='APP_USR-...'
+npm run inspector:auth   # MCP Inspector UI
+```
+
+---
+
+## Quick Start (upstream / npx)
+
+Upstream `@dan1d/mercadolibre-mcp` used public `/sites/.../search`; this fork uses `/products/search` and requires a token for search.
 
 ### Claude Desktop
 
@@ -88,18 +109,19 @@ For endpoints that require auth (future premium features), add your access token
 
 ---
 
-## Available Tools
+## Available Tools (Kolmena fork)
 
 | Tool | Description |
 |------|-------------|
-| `search_items` | Search products by keyword. Filter by category, price range, and site (MLA=Argentina, MLB=Brazil, MLM=Mexico, MLC=Chile, MCO=Colombia). |
-| `get_item` | Get full item details: title, price, pictures, seller, condition, stock, and more. |
-| `get_item_description` | Get the full text description of an item. |
-| `get_categories` | List all top-level categories for a MercadoLibre site. |
-| `get_category` | Get category details including name, path from root, and children. |
-| `get_seller_info` | Get seller profile: reputation, ratings, and transaction stats. |
-| `get_trends` | Get current trending searches for a specific site/country. |
-| `get_currency_conversion` | Convert between currencies using MercadoLibre exchange rates (ARS, BRL, MXN, USD, etc.). |
+| `search_items` | Catalog keyword search via `/products/search` (token required). Returns catalog product ids. |
+| `get_product` | Catalog product details via `/products/{id}` — use after `search_items`. |
+| `get_item` | Marketplace listing `/items/{id}`, or catalog product if id came from search (fallback). |
+| `get_item_description` | Listing description, or catalog `short_description` on fallback. |
+| `get_categories` | Top-level categories for a site (token may be required). |
+| `get_category` | Category tree node by id. |
+| `get_seller_info` | Seller profile by numeric seller id (from a **listing**, not catalog search). |
+| `get_trends` | Trending searches for a site. |
+| `get_currency_conversion` | FX conversion (token required). |
 
 ---
 
@@ -130,8 +152,9 @@ For endpoints that require auth (future premium features), add your access token
 
 ## Example Prompts
 
-- "Search for PlayStation 5 under $500000 in Argentina"
-- "Show me the details of item MLA1405857684"
+- "Search for iPhone 15 on MercadoLibre Argentina"
+- "Show me details for catalog product MLA55016525"
+- "What's the description for the first search result?"
 - "What are the trending searches in Brazil?"
 - "List all categories on MercadoLibre Mexico"
 - "Show me the reputation of seller 123456789"

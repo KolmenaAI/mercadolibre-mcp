@@ -9,7 +9,12 @@ export interface SearchItemsParams {
 }
 
 export interface GetItemParams {
+  /** Marketplace listing id (MLA…) or catalog product id from search_items — auto-resolves on 404. */
   item_id: string;
+}
+
+export interface GetProductParams {
+  product_id: string;
 }
 
 export interface GetItemDescriptionParams {

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { MercadoLibreClient } from "../src/client.js";
 import {
   searchItems,
+  getProduct,
   getItem,
   getItemDescription,
   getCategories,
@@ -30,19 +31,34 @@ describe("actions", () => {
   });
 
   describe("searchItems", () => {
-    it("searches with query and default site MLA", async () => {
-      mockFetch.mockResolvedValueOnce(jsonResponse({ results: [{ id: "MLA1" }] }));
+    it("searches via products/search with query and default site MLA", async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({
+          keywords: "iphone",
+          paging: { total: 1, limit: 10, offset: 0 },
+          results: [{ id: "MLA16240160", name: "iPhone" }],
+        })
+      );
 
       const result = await searchItems(client, { query: "iphone" });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining("/sites/MLA/search?"),
+        expect.stringContaining("/products/search?"),
         expect.any(Object)
       );
       const url = mockFetch.mock.calls[0][0] as string;
+      expect(url).toContain("site_id=MLA");
+      expect(url).toContain("status=active");
       expect(url).toContain("q=iphone");
       expect(url).toContain("limit=10");
-      expect(result).toEqual({ results: [{ id: "MLA1" }] });
+      expect(result).toEqual({
+        search_api: "products/search",
+        result_type: "catalog_product",
+        note: expect.any(String),
+        keywords: "iphone",
+        paging: { total: 1, limit: 10, offset: 0 },
+        results: [{ id: "MLA16240160", name: "iPhone" }],
+      });
     });
 
     it("uses custom site_id", async () => {
@@ -51,23 +67,21 @@ describe("actions", () => {
       await searchItems(client, { query: "notebook", site_id: "MLB" });
 
       const url = mockFetch.mock.calls[0][0] as string;
-      expect(url).toContain("/sites/MLB/search");
+      expect(url).toContain("site_id=MLB");
+      expect(url).toContain("/products/search");
     });
 
-    it("includes category and price filters", async () => {
+    it("maps category to domain_id", async () => {
       mockFetch.mockResolvedValueOnce(jsonResponse({ results: [] }));
 
       await searchItems(client, {
         query: "tv",
-        category: "MLA1055",
-        price_min: 100000,
-        price_max: 500000,
+        category: "MLA-CELLPHONES",
       });
 
       const url = mockFetch.mock.calls[0][0] as string;
-      expect(url).toContain("category=MLA1055");
-      expect(url).toContain("price_min=100000");
-      expect(url).toContain("price_max=500000");
+      expect(url).toContain("domain_id=MLA-CELLPHONES");
+      expect(url).not.toContain("price_min");
     });
 
     it("caps limit at 50", async () => {
@@ -80,8 +94,25 @@ describe("actions", () => {
     });
   });
 
+  describe("getProduct", () => {
+    it("fetches catalog product by ID", async () => {
+      const product = { id: "MLA55016525", name: "iPhone 15" };
+      mockFetch.mockResolvedValueOnce(jsonResponse(product));
+
+      const result = await getProduct(client, { product_id: "MLA55016525" });
+
+      const url = mockFetch.mock.calls[0][0] as string;
+      expect(url).toContain("/products/MLA55016525");
+      expect(result).toEqual({
+        resource_type: "catalog_product",
+        api: "GET /products/{id}",
+        product,
+      });
+    });
+  });
+
   describe("getItem", () => {
-    it("fetches item by ID", async () => {
+    it("fetches marketplace item by ID", async () => {
       const item = { id: "MLA123", title: "Test Item", price: 50000 };
       mockFetch.mockResolvedValueOnce(jsonResponse(item));
 
@@ -89,12 +120,39 @@ describe("actions", () => {
 
       const url = mockFetch.mock.calls[0][0] as string;
       expect(url).toContain("/items/MLA123");
-      expect(result).toEqual(item);
+      expect(result).toEqual({
+        resource_type: "marketplace_item",
+        api: "GET /items/{id}",
+        item,
+      });
+    });
+
+    it("falls back to catalog product when listing not found", async () => {
+      mockFetch.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ message: "not found", error: "not_found", status: 404 }),
+          { status: 404, headers: { "Content-Type": "application/json" } }
+        )
+      );
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({ id: "MLA55016525", name: "Catalog product" })
+      );
+
+      const result = await getItem(client, { item_id: "MLA55016525" });
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      const productUrl = mockFetch.mock.calls[1][0] as string;
+      expect(productUrl).toContain("/products/MLA55016525");
+      expect(result).toMatchObject({
+        resource_type: "catalog_product",
+        resolved_from: "item_id",
+        product: { id: "MLA55016525", name: "Catalog product" },
+      });
     });
   });
 
   describe("getItemDescription", () => {
-    it("fetches item description", async () => {
+    it("fetches marketplace item description", async () => {
       const desc = { plain_text: "A great product" };
       mockFetch.mockResolvedValueOnce(jsonResponse(desc));
 
@@ -102,7 +160,38 @@ describe("actions", () => {
 
       const url = mockFetch.mock.calls[0][0] as string;
       expect(url).toContain("/items/MLA123/description");
-      expect(result).toEqual(desc);
+      expect(result).toEqual({
+        resource_type: "marketplace_item_description",
+        api: "GET /items/{id}/description",
+        description: desc,
+      });
+    });
+
+    it("falls back to catalog short_description when listing description missing", async () => {
+      mockFetch.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            message: "Description of item with id MLA55016525 not found",
+            error: "not_found",
+            status: 404,
+          }),
+          { status: 404, headers: { "Content-Type": "application/json" } }
+        )
+      );
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({
+          id: "MLA55016525",
+          short_description: { type: "plaintext", content: "Product datasheet text" },
+        })
+      );
+
+      const result = await getItemDescription(client, { item_id: "MLA55016525" });
+
+      expect(result).toMatchObject({
+        resource_type: "catalog_product_description",
+        product_id: "MLA55016525",
+        plain_text: "Product datasheet text",
+      });
     });
   });
 

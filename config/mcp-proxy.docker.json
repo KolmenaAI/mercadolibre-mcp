@@ -1,0 +1,22 @@
+{
+  "$schema": "https://raw.githubusercontent.com/TBXark/mcp-proxy/master/schema.json",
+  "mcpProxy": {
+    "addr": ":8000",
+    "name": "kolmena-mcp-meli",
+    "version": "1.0.4",
+    "type": "streamable-http",
+    "options": {
+      "logEnabled": true
+    }
+  },
+  "mcpServers": {
+    "meli": {
+      "command": "node",
+      "args": ["bin/mcp-server.mjs"],
+      "cwd": "/opt/meli-mcp",
+      "options": {
+        "panicIfInvalid": true
+      }
+    }
+  }
+}
