@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-npm run build --silent
+pnpm build --silent
 
 INSPECTOR=(npx --yes @modelcontextprotocol/inspector --cli node bin/mcp-server.mjs)
 

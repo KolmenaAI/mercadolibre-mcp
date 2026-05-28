@@ -5,7 +5,7 @@
 ## Prerequisites
 
 - **Node.js 18+** (you have Node 24 in the meli-mcp image; 18+ is enough locally)
-- Built server: `npm run build`
+- Built server: `pnpm build`
 - Optional: `MERCADOLIBRE_ACCESS_TOKEN` for endpoints that need auth (see per-tool notes below)
 
 ## Option A — One command (recommended)
@@ -14,14 +14,14 @@ From this directory:
 
 ```bash
 cd /workspace/kolmena/meli-mcp
-npm run build
-npm run inspector
+pnpm build
+pnpm inspector
 ```
 
 With a Mercado Libre access token:
 
 ```bash
-MERCADOLIBRE_ACCESS_TOKEN='APP_USR-...' npm run inspector:auth
+MERCADOLIBRE_ACCESS_TOKEN='APP_USR-...' pnpm inspector:auth
 ```
 
 The terminal prints something like:
@@ -33,14 +33,14 @@ The terminal prints something like:
 ```
 
 1. **Open that URL** in your browser (copy the full link including the token).
-2. Inspector **starts your MCP server automatically** (stdio) — you do not run `npm run start` in another terminal.
+2. Inspector **starts your MCP server automatically** (stdio) — you do not run `pnpm start` in another terminal.
 3. If the UI is empty, click **Connect** on the left (transport should already be stdio).
 
 ## Option B — Manual launch
 
 ```bash
 cd /workspace/kolmena/meli-mcp
-npm run build
+pnpm build
 npx @modelcontextprotocol/inspector node /workspace/kolmena/meli-mcp/bin/mcp-server.mjs
 ```
 
@@ -130,7 +130,7 @@ Use an `id` from step 1:
 
 ### 5. `search_items`
 
-Requires `MERCADOLIBRE_ACCESS_TOKEN` (use `npm run inspector:auth`).
+Requires `MERCADOLIBRE_ACCESS_TOKEN` (use `pnpm inspector:auth`).
 
 ```json
 {
@@ -189,13 +189,13 @@ Replace with a real numeric seller id from `get_item`.
 Runs all tools from the terminal (good for CI or quick checks):
 
 ```bash
-npm run smoke
+pnpm smoke
 ```
 
 With token:
 
 ```bash
-MERCADOLIBRE_ACCESS_TOKEN='APP_USR-...' npm run smoke
+MERCADOLIBRE_ACCESS_TOKEN='APP_USR-...' pnpm smoke
 ```
 
 ---
@@ -204,12 +204,12 @@ MERCADOLIBRE_ACCESS_TOKEN='APP_USR-...' npm run smoke
 
 | Problem | Fix |
 |---------|-----|
-| `Cannot find module '../dist/mcp-server.js'` | Run `npm run build` first |
+| `Cannot find module '../dist/mcp-server.js'` | Run `pnpm build` first |
 | UI asks for auth token | Open the full URL from the terminal (`MCP_PROXY_AUTH_TOKEN=...`) |
 | Connection failed | Use absolute paths for `node` and `bin/mcp-server.mjs` |
 | `search_items` → 403 / forbidden | Known ML API restriction; not an Inspector bug |
 | `PA_UNAUTHORIZED_RESULT_FROM_POLICIES` | Datacenter IP blocked by Mercado Libre — test from your laptop or with a valid token |
-| `get_currency_conversion` → 401 token not informed | Set `MERCADOLIBRE_ACCESS_TOKEN` (use `npm run inspector:auth`) |
+| `get_currency_conversion` → 401 token not informed | Set `MERCADOLIBRE_ACCESS_TOKEN` (use `pnpm inspector:auth`) |
 | `get_item` → 404 | Item id invalid or delisted; try another id from search |
 | Remote dev machine | Open the printed `http://127.0.0.1:6274` via your IDE port-forward or SSH tunnel |
 

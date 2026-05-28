@@ -25,5 +25,5 @@ First release under the `@kolmena-ai/` scope. Fork of [`@dan1d/mercadolibre-mcp@
 
 - **`MercadoLibreClient`** gains `postJson`, `postValidate` (204 / 400 discriminated union for `/items/validate`), `postMultipart` (picture upload), and HTTP `PUT` for listing updates.
 - Package renamed to `@kolmena-ai/meli-mcp`; binaries `mercadolibre-mcp` and `meli-mcp` share the same entrypoint.
-- Local dev: `npm run inspector` / `inspector:auth` for MCP Inspector, `npm run smoke` for CLI smoke of every tool, see [TESTING.md](./TESTING.md).
+- Local dev: `pnpm inspector` / `inspector:auth` for MCP Inspector, `pnpm smoke` for CLI smoke of every tool, see [TESTING.md](./TESTING.md).
 - Kolmena backend: `meli-buyer` + `meli-seller` skills consume this MCP via `CALL_MCP_TOOL`; the old `meli-api` skill is deprecated.
