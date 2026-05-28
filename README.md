@@ -325,6 +325,94 @@ const conversion = await ml.tools.get_currency_conversion({
 
 ---
 
+## Docker
+
+A container image is published at `ghcr.io/kolmenaai/mercadolibre-mcp:<version>` for self-hosted deployments. It bundles the MCP server and [TBXark/mcp-proxy](https://github.com/TBXark/mcp-proxy), so it runs in either **HTTP** (default) or **stdio** mode.
+
+### Pull a published image
+
+```bash
+docker run -p 8000:8000 \
+  -e MERCADOLIBRE_ACCESS_TOKEN="${MERCADOLIBRE_ACCESS_TOKEN}" \
+  ghcr.io/kolmenaai/mercadolibre-mcp:1.3.0
+```
+
+The server speaks Streamable HTTP at `POST http://localhost:8000/meli/mcp`.
+
+### Build locally
+
+From the repo root:
+
+```bash
+docker buildx build --load -t mercadolibre-mcp:dev .
+```
+
+This builds for your current architecture and loads the result into the local docker daemon so `docker run mercadolibre-mcp:dev` works. The CI workflow does multi-arch (`linux/amd64,linux/arm64`) and pushes to GHCR — local multi-arch builds require switching to the `docker-container` buildx driver and can't be `--load`ed into the local daemon, so they're rarely worth it outside CI.
+
+### Test the local image — HTTP mode (default)
+
+```bash
+docker run --rm -p 8000:8000 \
+  -e MERCADOLIBRE_ACCESS_TOKEN="${MERCADOLIBRE_ACCESS_TOKEN}" \
+  mercadolibre-mcp:dev
+```
+
+In another terminal:
+
+```bash
+# TCP liveness
+nc -zv localhost 8000
+
+# Initialize and list tools
+curl -s -X POST http://localhost:8000/meli/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+
+# Call a tool
+curl -s -X POST http://localhost:8000/meli/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"search_items","arguments":{"query":"PlayStation 5","site_id":"MLA","limit":3}}}'
+```
+
+### Test the local image — stdio mode
+
+Override the entrypoint to skip mcp-proxy and attach an MCP client directly to the container's stdin/stdout:
+
+```bash
+docker run --rm -i \
+  --entrypoint mercadolibre-mcp \
+  -e MERCADOLIBRE_ACCESS_TOKEN="${MERCADOLIBRE_ACCESS_TOKEN}" \
+  mercadolibre-mcp:dev
+```
+
+Useful as a sanity check from a shell:
+
+```bash
+printf '%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"smoke","version":"0"}}}' \
+  '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+| docker run --rm -i \
+    --entrypoint mercadolibre-mcp \
+    -e MERCADOLIBRE_ACCESS_TOKEN="${MERCADOLIBRE_ACCESS_TOKEN}" \
+    mercadolibre-mcp:dev
+```
+
+### Override the proxy config
+
+The default proxy config is baked at `/etc/mcp-proxy/config.json` (source: [`config/mcp-proxy.docker.json`](./config/mcp-proxy.docker.json)). To change the path, port, or `panicIfInvalid` behavior at runtime, mount your own:
+
+```bash
+docker run --rm -p 8000:8000 \
+  -v "$(pwd)/my-config.json:/etc/mcp-proxy/config.json:ro" \
+  -e MERCADOLIBRE_ACCESS_TOKEN="${MERCADOLIBRE_ACCESS_TOKEN}" \
+  mercadolibre-mcp:dev
+```
+
+---
+
 ## Part of the LATAM MCP Toolkit
 
 | Server | What it does |
