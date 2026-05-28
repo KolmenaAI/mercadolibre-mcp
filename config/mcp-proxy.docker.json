@@ -14,7 +14,7 @@
       "command": "mercadolibre-mcp",
       "args": [],
       "options": {
-        "panicIfInvalid": false
+        "panicIfInvalid": true
       }
     }
   }

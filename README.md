@@ -27,9 +27,9 @@ Most calls need `MERCADOLIBRE_ACCESS_TOKEN` (OAuth `APP_USR-...`).
 Ids from search are **not** marketplace listing ids; `/items/MLA55016525` alone will 404 without fallback.
 
 ```bash
-npm install && npm run build
+pnpm install && pnpm build
 export MERCADOLIBRE_ACCESS_TOKEN='APP_USR-...'
-npm run inspector:auth   # MCP Inspector UI
+pnpm inspector:auth   # MCP Inspector UI
 ```
 
 ---

@@ -14,7 +14,7 @@ This directory is a fork of [@dan1d/mercadolibre-mcp](https://github.com/dan1d/m
 - [x] **37 seller tools** (`seller_*`) — see [SELLER-API-ROADMAP.md](./SELLER-API-ROADMAP.md)
 - [x] `search_buyable_listings`, catalog search, post-purchase buyer suite
 - [x] `meli-buyer` + `meli-seller` skills in kolmena-backend (MCP via `CALL_MCP_TOOL`; `meli-api` deprecated)
-- [x] Local test docs: [TESTING.md](./TESTING.md), `npm run inspector`, `npm run smoke`
+- [x] Local test docs: [TESTING.md](./TESTING.md), `pnpm inspector`, `pnpm smoke`
 - [x] Deploy notes: [HANDOFF.md](./HANDOFF.md)
 
 ## Planned next
@@ -27,15 +27,15 @@ This directory is a fork of [@dan1d/mercadolibre-mcp](https://github.com/dan1d/m
 ```bash
 git fetch upstream
 git merge upstream/main   # or cherry-pick specific commits
-npm install && npm run build && npm test
+pnpm install && pnpm build && pnpm test
 ```
 
 ## Local dev
 
 ```bash
-npm install
-npm run build
-MERCADOLIBRE_ACCESS_TOKEN=APP_USR-... npm run start   # stdio MCP
+pnpm install
+pnpm build
+MERCADOLIBRE_ACCESS_TOKEN=APP_USR-... pnpm start   # stdio MCP
 ```
 
 For HTTP (Bifrost / mcp-proxy), use the config in `config/mcp-proxy.example.json`.

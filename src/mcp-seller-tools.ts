@@ -408,7 +408,7 @@ export function registerSellerMercadoLibreTools(server: McpServer, tools: Tools)
     {
       claim_id: z.number(),
       action: z.string(),
-      payload: z.record(z.union([z.string(), z.number(), z.boolean()])).optional(),
+      payload: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
     },
     async (params) => toolResult(() => tools.seller_submit_claim_action(params))()
   );

@@ -11,20 +11,20 @@ Upstream remote is `upstream` → `https://github.com/dan1d/mercadolibre-mcp.git
 ## Commands
 
 ```bash
-npm run build              # tsc → dist/ (required before running bin/ or inspector)
-npm test                   # vitest run
-npm run test:coverage      # vitest run --coverage (v8)
-npx vitest run tests/seller-actions.test.ts                    # single test file
-npx vitest run -t "name of test"                               # by test name
-npx tsc --noEmit           # type-check only (CI runs this in addition to build)
+pnpm build                 # tsc → dist/ (required before running bin/ or inspector)
+pnpm test                  # vitest run
+pnpm test:coverage         # vitest run --coverage (v8)
+pnpm exec vitest run tests/seller-actions.test.ts              # single test file
+pnpm exec vitest run -t "name of test"                         # by test name
+pnpm exec tsc --noEmit     # type-check only (CI runs this in addition to build)
 
-npm run start              # node bin/mcp-server.mjs (stdio MCP — requires build first)
-npm run inspector          # MCP Inspector UI, no auth
-MERCADOLIBRE_ACCESS_TOKEN='APP_USR-...' npm run inspector:auth  # Inspector with token
-npm run smoke              # scripts/smoke-all-tools.sh — CLI smoke of every tool via inspector --cli
+pnpm start                 # node bin/mcp-server.mjs (stdio MCP — requires build first)
+pnpm inspector             # MCP Inspector UI, no auth
+MERCADOLIBRE_ACCESS_TOKEN='APP_USR-...' pnpm inspector:auth     # Inspector with token
+pnpm smoke                 # scripts/smoke-all-tools.sh — CLI smoke of every tool via inspector --cli
 ```
 
-CI (`.github/workflows/ci.yml`) runs `npm ci && npm test && npm run build && npx tsc --noEmit` on Node 20.
+Package manager is **pnpm 11.4.0** (pinned via the `packageManager` field). Install via `brew install pnpm` or `npm i -g pnpm`. CI (`.github/workflows/ci.yml`) runs `pnpm install --frozen-lockfile && pnpm test && pnpm build && pnpm exec tsc --noEmit` on Node 24. Node engine is pinned to `>=24` since Node 18 (EOL April 2025) and Node 20 (EOL April 2026) are no longer supported.
 
 ## Auth
 
@@ -92,7 +92,7 @@ ML blocks `/sites/{site}/search?q=` for many apps (403). The fork's answer:
 
 ## Deployment
 
-Production runs `mcp-proxy` (PID 1) → `node bin/mcp-server.mjs` (child, stdio) on port 8000 as `streamable-http`. Token comes from a Kubernetes secret. Image build copies the repo, runs `npm ci && npm run build`. Full details and the mcp-proxy config in `HANDOFF.md`; example proxy config in `config/mcp-proxy.example.json`.
+Production runs `mcp-proxy` (PID 1) → `node bin/mcp-server.mjs` (child, stdio) on port 8000 as `streamable-http`. Token comes from a Kubernetes secret. Image build uses pnpm: install with the lockfile, `pnpm build`, then `pnpm deploy --legacy --prod /prod` to produce a self-contained tree (only prod deps, no symlinks back to the pnpm store). Full details and the mcp-proxy config in `HANDOFF.md`; example proxy config in `config/mcp-proxy.example.json`.
 
 ## Reference docs in repo
 
