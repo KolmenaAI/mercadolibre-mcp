@@ -24,7 +24,7 @@ MERCADOLIBRE_ACCESS_TOKEN='APP_USR-...' pnpm inspector:auth     # Inspector with
 pnpm smoke                 # scripts/smoke-all-tools.sh — CLI smoke of every tool via inspector --cli
 ```
 
-Package manager is **pnpm 10.27.0** (pinned via the `packageManager` field). Install via `brew install pnpm` or `npm i -g pnpm`. CI (`.github/workflows/ci.yml`) runs `pnpm install --frozen-lockfile && pnpm test && pnpm build && pnpm exec tsc --noEmit` on Node 20.
+Package manager is **pnpm 11.4.0** (pinned via the `packageManager` field). Install via `brew install pnpm` or `npm i -g pnpm`. CI (`.github/workflows/ci.yml`) runs `pnpm install --frozen-lockfile && pnpm test && pnpm build && pnpm exec tsc --noEmit` on Node 24. Node engine is pinned to `>=24` since Node 18 (EOL April 2025) and Node 20 (EOL April 2026) are no longer supported.
 
 ## Auth
 

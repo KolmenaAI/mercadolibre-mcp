@@ -25,7 +25,7 @@ Minimal change in the image build stage:
 # was: npm install -g @dan1d/mercadolibre-mcp@1.0.2
 COPY . /opt/meli-mcp
 WORKDIR /opt/meli-mcp
-RUN npm install -g pnpm@10.27.0 && pnpm install --frozen-lockfile && pnpm build
+RUN npm install -g pnpm@11.4.0 && pnpm install --frozen-lockfile && pnpm build
 ```
 
 `config.json` for mcp-proxy:

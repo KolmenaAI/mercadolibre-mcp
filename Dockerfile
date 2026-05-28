@@ -20,8 +20,8 @@
 # Override the proxy config by mounting a file at /etc/mcp-proxy/config.json
 # (downstream wrappers can also COPY a replacement at build time).
 
-ARG NODE_IMAGE_TAG=24.15.0-alpine3.23
-ARG PNPM_VERSION=10.27.0
+ARG NODE_IMAGE_TAG=24.16.0-alpine3.23
+ARG PNPM_VERSION=11.4.0
 ARG MCP_PROXY_GIT_REF=v0.43.2
 
 ############################
@@ -42,7 +42,9 @@ COPY . .
 RUN pnpm build
 
 # Produce a self-contained /prod tree with only production deps.
-# --legacy avoids the "inject-workspace-packages" requirement (we have no workspace deps).
+# --legacy is the supported deploy mode for single-package "workspaces" (no
+# workspace cross-deps to inject); pnpm's non-legacy deploy only applies to
+# monorepos with `workspace:` references between packages.
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
     pnpm deploy --legacy --filter=@kolmena-ai/meli-mcp --prod /prod
 
