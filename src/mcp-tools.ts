@@ -1,12 +1,32 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type { ServerNotification, ServerRequest } from "@modelcontextprotocol/sdk/types.js";
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { runWithRequestAccessToken } from "./client.js";
 import type { createMercadoLibreTools } from "./index.js";
 
 type Tools = ReturnType<typeof createMercadoLibreTools>["tools"];
 type ToolExtra = RequestHandlerExtra<ServerRequest, ServerNotification>;
+const AUTH_TRACE_ENABLED =
+  process.env.MELI_AUTH_TRACE === "1" || process.env.MELI_AUTH_TRACE?.toLowerCase() === "true";
+
+function tokenFingerprint(token: string | undefined): string {
+  if (!token) return "none";
+  return createHash("sha256").update(token).digest("hex").slice(0, 10);
+}
+
+function tokenPrefix(token: string | undefined): string {
+  if (!token) return "none";
+  return token.startsWith("APP_USR") ? "APP_USR" : "other";
+}
+
+function traceIncomingAuth(source: string, token: string | undefined): void {
+  if (!AUTH_TRACE_ENABLED) return;
+  console.log(
+    `[MELI_AUTH_TRACE] ${source} prefix=${tokenPrefix(token)} fp=${tokenFingerprint(token)}`
+  );
+}
 
 function resolveBearerToken(extra: ToolExtra): string | undefined {
   const rawAuthorization = extra.requestInfo?.headers?.authorization;
@@ -27,6 +47,7 @@ function toolResult(
   return async () => {
     try {
       const token = extra ? resolveBearerToken(extra) : undefined;
+      traceIncomingAuth("tool_result", token);
       const result = await runWithRequestAccessToken(token, handler);
       return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
     } catch (error) {
@@ -46,6 +67,7 @@ function wrapToolWithRequestTokenContext(server: McpServer): void {
     const wrappedCallback = (...callbackArgs: unknown[]) => {
       const maybeExtra = callbackArgs[callbackArgs.length - 1] as ToolExtra | undefined;
       const token = maybeExtra ? resolveBearerToken(maybeExtra) : undefined;
+      traceIncomingAuth("tool_wrapper", token);
       return runWithRequestAccessToken(token, async () => originalCallback(...callbackArgs) as Promise<unknown>);
     };
 

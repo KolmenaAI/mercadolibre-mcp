@@ -1,9 +1,30 @@
 import { AsyncLocalStorage } from "async_hooks";
+import { createHash } from "node:crypto";
 import { MercadoLibreError } from "./errors.js";
 import type { MercadoLibreJsonObject, MercadoLibreJsonValue } from "./listing-types.js";
 
 const BASE_URL = "https://api.mercadolibre.com";
 const requestAccessTokenStorage = new AsyncLocalStorage<string | undefined>();
+const AUTH_TRACE_ENABLED =
+  process.env.MELI_AUTH_TRACE === "1" || process.env.MELI_AUTH_TRACE?.toLowerCase() === "true";
+
+function tokenFingerprint(token: string | undefined): string {
+  if (!token) return "none";
+  return createHash("sha256").update(token).digest("hex").slice(0, 10);
+}
+
+function tokenPrefix(token: string | undefined): string {
+  if (!token) return "none";
+  return token.startsWith("APP_USR") ? "APP_USR" : "other";
+}
+
+function traceAuth(message: string, meta: Record<string, string>): void {
+  if (!AUTH_TRACE_ENABLED) return;
+  const pairs = Object.entries(meta)
+    .map(([key, value]) => `${key}=${value}`)
+    .join(" ");
+  console.log(`[MELI_AUTH_TRACE] ${message} ${pairs}`);
+}
 
 export async function runWithRequestAccessToken<T>(
   accessToken: string | undefined,
@@ -38,6 +59,11 @@ export class MercadoLibreClient {
     };
     const requestAccessToken = requestAccessTokenStorage.getStore();
     const effectiveAccessToken = requestAccessToken ?? this.accessToken;
+    traceAuth("effective_token_selected", {
+      source: requestAccessToken ? "request" : this.accessToken ? "default" : "none",
+      prefix: tokenPrefix(effectiveAccessToken),
+      fp: tokenFingerprint(effectiveAccessToken),
+    });
     if (effectiveAccessToken) {
       h.Authorization = `Bearer ${effectiveAccessToken}`;
     }
@@ -68,6 +94,15 @@ export class MercadoLibreClient {
   }
 
   async postValidate(path: string, body: MercadoLibreJsonObject): Promise<ListingValidationResult> {
+    const requestAccessToken = requestAccessTokenStorage.getStore();
+    const effectiveAccessToken = requestAccessToken ?? this.accessToken;
+    traceAuth("outbound_post_validate", {
+      method: "POST",
+      path,
+      source: requestAccessToken ? "request" : this.accessToken ? "default" : "none",
+      prefix: tokenPrefix(effectiveAccessToken),
+      fp: tokenFingerprint(effectiveAccessToken),
+    });
     const res = await fetch(`${BASE_URL}${path}`, {
       method: "POST",
       headers: this.headers(),
@@ -102,6 +137,13 @@ export class MercadoLibreClient {
     const headers: Record<string, string> = {};
     const requestAccessToken = requestAccessTokenStorage.getStore();
     const effectiveAccessToken = requestAccessToken ?? this.accessToken;
+    traceAuth("outbound_post_multipart", {
+      method: "POST",
+      path,
+      source: requestAccessToken ? "request" : this.accessToken ? "default" : "none",
+      prefix: tokenPrefix(effectiveAccessToken),
+      fp: tokenFingerprint(effectiveAccessToken),
+    });
     if (effectiveAccessToken) {
       headers.Authorization = `Bearer ${effectiveAccessToken}`;
     }
@@ -132,6 +174,15 @@ export class MercadoLibreClient {
       const qs = new URLSearchParams(options.params).toString();
       if (qs) url += `?${qs}`;
     }
+    const requestAccessToken = requestAccessTokenStorage.getStore();
+    const effectiveAccessToken = requestAccessToken ?? this.accessToken;
+    traceAuth("outbound_request", {
+      method,
+      path,
+      source: requestAccessToken ? "request" : this.accessToken ? "default" : "none",
+      prefix: tokenPrefix(effectiveAccessToken),
+      fp: tokenFingerprint(effectiveAccessToken),
+    });
     const init: RequestInit = {
       method,
       headers: this.headers(),

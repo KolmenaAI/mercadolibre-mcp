@@ -1,12 +1,32 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type { ServerNotification, ServerRequest } from "@modelcontextprotocol/sdk/types.js";
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { runWithRequestAccessToken } from "./client.js";
 import type { createMercadoLibreTools } from "./index.js";
 
 type Tools = ReturnType<typeof createMercadoLibreTools>["tools"];
 type ToolExtra = RequestHandlerExtra<ServerRequest, ServerNotification>;
+const AUTH_TRACE_ENABLED =
+  process.env.MELI_AUTH_TRACE === "1" || process.env.MELI_AUTH_TRACE?.toLowerCase() === "true";
+
+function tokenFingerprint(token: string | undefined): string {
+  if (!token) return "none";
+  return createHash("sha256").update(token).digest("hex").slice(0, 10);
+}
+
+function tokenPrefix(token: string | undefined): string {
+  if (!token) return "none";
+  return token.startsWith("APP_USR") ? "APP_USR" : "other";
+}
+
+function traceIncomingAuth(source: string, token: string | undefined): void {
+  if (!AUTH_TRACE_ENABLED) return;
+  console.log(
+    `[MELI_AUTH_TRACE] ${source} prefix=${tokenPrefix(token)} fp=${tokenFingerprint(token)}`
+  );
+}
 
 const listingAttributeSchema = z.object({
   id: z.string(),
@@ -69,6 +89,7 @@ function toolResult(
             : rawAuthorization.join(", ");
       const [scheme, token] = authorization?.split(" ") ?? [];
       const accessToken = scheme?.toLowerCase() === "bearer" && token ? token.trim() : undefined;
+      traceIncomingAuth("seller_tool_result", accessToken);
       const result = await runWithRequestAccessToken(accessToken, handler);
       return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
     } catch (error) {
@@ -97,6 +118,7 @@ export function registerSellerMercadoLibreTools(server: McpServer, tools: Tools)
             : rawAuthorization.join(", ");
       const [scheme, token] = authorization?.split(" ") ?? [];
       const accessToken = scheme?.toLowerCase() === "bearer" && token ? token.trim() : undefined;
+      traceIncomingAuth("seller_tool_wrapper", accessToken);
       return runWithRequestAccessToken(
         accessToken,
         async () => originalCallback(...callbackArgs) as Promise<unknown>

@@ -8,7 +8,7 @@ export function createMcpServer(accessToken?: string) {
 
   const server = new McpServer({
     name: "mercadolibre-mcp",
-    version: "1.5.0",
+    version: "1.5.1",
   });
 
   registerMercadoLibreTools(server, tools);
