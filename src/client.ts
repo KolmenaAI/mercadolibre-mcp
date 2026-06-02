@@ -1,7 +1,16 @@
+import { AsyncLocalStorage } from "async_hooks";
 import { MercadoLibreError } from "./errors.js";
 import type { MercadoLibreJsonObject, MercadoLibreJsonValue } from "./listing-types.js";
 
 const BASE_URL = "https://api.mercadolibre.com";
+const requestAccessTokenStorage = new AsyncLocalStorage<string | undefined>();
+
+export async function runWithRequestAccessToken<T>(
+  accessToken: string | undefined,
+  callback: () => Promise<T>
+): Promise<T> {
+  return requestAccessTokenStorage.run(accessToken, callback);
+}
 
 export interface ListingValidationSuccess {
   valid: true;
@@ -23,16 +32,14 @@ export class MercadoLibreClient {
     this.accessToken = accessToken;
   }
 
-  setAccessToken(accessToken?: string): void {
-    this.accessToken = accessToken;
-  }
-
   private headers(): Record<string, string> {
     const h: Record<string, string> = {
       "Content-Type": "application/json",
     };
-    if (this.accessToken) {
-      h.Authorization = `Bearer ${this.accessToken}`;
+    const requestAccessToken = requestAccessTokenStorage.getStore();
+    const effectiveAccessToken = requestAccessToken ?? this.accessToken;
+    if (effectiveAccessToken) {
+      h.Authorization = `Bearer ${effectiveAccessToken}`;
     }
     return h;
   }
@@ -93,8 +100,10 @@ export class MercadoLibreClient {
 
   async postMultipart<T = unknown>(path: string, formData: FormData): Promise<T> {
     const headers: Record<string, string> = {};
-    if (this.accessToken) {
-      headers.Authorization = `Bearer ${this.accessToken}`;
+    const requestAccessToken = requestAccessTokenStorage.getStore();
+    const effectiveAccessToken = requestAccessToken ?? this.accessToken;
+    if (effectiveAccessToken) {
+      headers.Authorization = `Bearer ${effectiveAccessToken}`;
     }
     const res = await fetch(`${BASE_URL}${path}`, {
       method: "POST",

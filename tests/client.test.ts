@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { MercadoLibreClient } from "../src/client.js";
+import { MercadoLibreClient, runWithRequestAccessToken } from "../src/client.js";
 import { MercadoLibreError } from "../src/errors.js";
 
 const mockFetch = vi.fn();
@@ -149,5 +149,30 @@ describe("MercadoLibreClient", () => {
         body: JSON.stringify({ text: "Hi", item_id: "MLA1" }),
       })
     );
+  });
+
+  it("keeps per-request access tokens isolated under concurrency", async () => {
+    const client = new MercadoLibreClient("STATIC_TOKEN");
+    const seenAuthHeaders: string[] = [];
+
+    mockFetch.mockImplementation(async (_url: string, init?: RequestInit) => {
+      const headers = init?.headers as Record<string, string>;
+      seenAuthHeaders.push(headers.Authorization);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      return jsonResponse({ ok: true });
+    });
+
+    await Promise.all([
+      runWithRequestAccessToken("TOKEN_A", async () => {
+        await client.get("/users/me");
+      }),
+      runWithRequestAccessToken("TOKEN_B", async () => {
+        await client.get("/users/me");
+      }),
+    ]);
+
+    expect(seenAuthHeaders).toHaveLength(2);
+    expect(seenAuthHeaders).toContain("Bearer TOKEN_A");
+    expect(seenAuthHeaders).toContain("Bearer TOKEN_B");
   });
 });

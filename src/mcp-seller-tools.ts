@@ -1,8 +1,12 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
+import type { ServerNotification, ServerRequest } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
+import { runWithRequestAccessToken } from "./client.js";
 import type { createMercadoLibreTools } from "./index.js";
 
 type Tools = ReturnType<typeof createMercadoLibreTools>["tools"];
+type ToolExtra = RequestHandlerExtra<ServerRequest, ServerNotification>;
 
 const listingAttributeSchema = z.object({
   id: z.string(),
@@ -51,11 +55,21 @@ const listingDraftParams = {
 };
 
 function toolResult(
-  handler: () => Promise<unknown>
+  handler: () => Promise<unknown>,
+  extra?: ToolExtra
 ): () => Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   return async () => {
     try {
-      const result = await handler();
+      const rawAuthorization = extra?.requestInfo?.headers?.authorization;
+      const authorization =
+        !rawAuthorization
+          ? undefined
+          : typeof rawAuthorization === "string"
+            ? rawAuthorization
+            : rawAuthorization.join(", ");
+      const [scheme, token] = authorization?.split(" ") ?? [];
+      const accessToken = scheme?.toLowerCase() === "bearer" && token ? token.trim() : undefined;
+      const result = await runWithRequestAccessToken(accessToken, handler);
       return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -65,6 +79,34 @@ function toolResult(
 }
 
 export function registerSellerMercadoLibreTools(server: McpServer, tools: Tools): void {
+  const originalTool = server.tool.bind(server);
+  server.tool = ((...args: unknown[]) => {
+    const callbackIndex = args.length - 1;
+    const originalCallback = args[callbackIndex];
+    if (typeof originalCallback !== "function")
+      return (originalTool as (...a: unknown[]) => unknown)(...args);
+
+    const wrappedCallback = (...callbackArgs: unknown[]) => {
+      const maybeExtra = callbackArgs[callbackArgs.length - 1] as ToolExtra | undefined;
+      const rawAuthorization = maybeExtra?.requestInfo?.headers?.authorization;
+      const authorization =
+        !rawAuthorization
+          ? undefined
+          : typeof rawAuthorization === "string"
+            ? rawAuthorization
+            : rawAuthorization.join(", ");
+      const [scheme, token] = authorization?.split(" ") ?? [];
+      const accessToken = scheme?.toLowerCase() === "bearer" && token ? token.trim() : undefined;
+      return runWithRequestAccessToken(
+        accessToken,
+        async () => originalCallback(...callbackArgs) as Promise<unknown>
+      );
+    };
+
+    args[callbackIndex] = wrappedCallback;
+    return (originalTool as (...a: unknown[]) => unknown)(...args);
+  }) as typeof server.tool;
+
   server.tool(
     "seller_get_me",
     "Authenticated seller account: profile, reputation, transactions (GET /users/me).",

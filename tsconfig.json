@@ -10,6 +10,7 @@
     "esModuleInterop": true,
     "declaration": true,
     "sourceMap": true,
+    "types": ["node"],
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true
   },

@@ -2,10 +2,10 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type { ServerNotification, ServerRequest } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
+import { runWithRequestAccessToken } from "./client.js";
 import type { createMercadoLibreTools } from "./index.js";
 
 type Tools = ReturnType<typeof createMercadoLibreTools>["tools"];
-type SetAccessToken = ReturnType<typeof createMercadoLibreTools>["setAccessToken"];
 type ToolExtra = RequestHandlerExtra<ServerRequest, ServerNotification>;
 
 function resolveBearerToken(extra: ToolExtra): string | undefined {
@@ -22,14 +22,12 @@ function resolveBearerToken(extra: ToolExtra): string | undefined {
 
 function toolResult(
   handler: () => Promise<unknown>,
-  extra?: ToolExtra,
-  setAccessToken: SetAccessToken = () => {}
+  extra?: ToolExtra
 ): () => Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   return async () => {
     try {
       const token = extra ? resolveBearerToken(extra) : undefined;
-      if (token) setAccessToken(token);
-      const result = await handler();
+      const result = await runWithRequestAccessToken(token, handler);
       return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -38,11 +36,28 @@ function toolResult(
   };
 }
 
-export function registerMercadoLibreTools(
-  server: McpServer,
-  tools: Tools,
-  setAccessToken: SetAccessToken
-): void {
+function wrapToolWithRequestTokenContext(server: McpServer): void {
+  const originalTool = server.tool.bind(server);
+  const toolWithToken = ((...args: unknown[]) => {
+    const callbackIndex = args.length - 1;
+    const originalCallback = args[callbackIndex];
+    if (typeof originalCallback !== "function") return (originalTool as (...a: unknown[]) => unknown)(...args);
+
+    const wrappedCallback = (...callbackArgs: unknown[]) => {
+      const maybeExtra = callbackArgs[callbackArgs.length - 1] as ToolExtra | undefined;
+      const token = maybeExtra ? resolveBearerToken(maybeExtra) : undefined;
+      return runWithRequestAccessToken(token, async () => originalCallback(...callbackArgs) as Promise<unknown>);
+    };
+
+    args[callbackIndex] = wrappedCallback;
+    return (originalTool as (...a: unknown[]) => unknown)(...args);
+  }) as typeof server.tool;
+
+  server.tool = toolWithToken;
+}
+
+export function registerMercadoLibreTools(server: McpServer, tools: Tools): void {
+  wrapToolWithRequestTokenContext(server);
   server.tool(
     "search_items",
     "Search MercadoLibre catalog products by keyword (GET /products/search). Returns catalog product ids — use get_product_buybox or search_buyable_listings for prices and sellers.",
@@ -55,7 +70,7 @@ export function registerMercadoLibreTools(
       limit: z.number().optional(),
       offset: z.number().optional(),
     },
-    async (params, extra) => toolResult(() => tools.search_items(params), extra, setAccessToken)()
+    async (params, extra) => toolResult(() => tools.search_items(params), extra)()
   );
 
   server.tool(
@@ -70,8 +85,7 @@ export function registerMercadoLibreTools(
       catalog_limit: z.number().optional().describe("Max catalog products to scan (default 15)"),
       include_seller_ratings: z.boolean().optional(),
     },
-    async (params, extra) =>
-      toolResult(() => tools.search_buyable_listings(params), extra, setAccessToken)()
+    async (params, extra) => toolResult(() => tools.search_buyable_listings(params), extra)()
   );
 
   server.tool(
@@ -289,7 +303,7 @@ export function registerMercadoLibreTools(
     "get_me",
     "Current OAuth user (GET /users/me). Use before buyer order tools.",
     {},
-    async (_params, extra) => toolResult(() => tools.get_me(), extra, setAccessToken)()
+    async (_params, extra) => toolResult(() => tools.get_me(), extra)()
   );
 
   server.tool(
