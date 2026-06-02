@@ -168,6 +168,9 @@ export function createMercadoLibreTools(accessToken?: string) {
   const client = new MercadoLibreClient(accessToken);
 
   return {
+    setAccessToken: (nextAccessToken?: string) => {
+      client.setAccessToken(nextAccessToken);
+    },
     tools: {
       search_items: (params: SearchItemsParams) => searchItems(client, params),
       search_buyable_listings: (params: SearchBuyableListingsParams) =>

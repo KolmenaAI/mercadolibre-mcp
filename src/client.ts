@@ -23,6 +23,10 @@ export class MercadoLibreClient {
     this.accessToken = accessToken;
   }
 
+  setAccessToken(accessToken?: string): void {
+    this.accessToken = accessToken;
+  }
+
   private headers(): Record<string, string> {
     const h: Record<string, string> = {
       "Content-Type": "application/json",
