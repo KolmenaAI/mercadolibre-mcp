@@ -3,7 +3,7 @@ import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/proto
 import type { ServerNotification, ServerRequest } from "@modelcontextprotocol/sdk/types.js";
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { runWithRequestAccessToken } from "./client.js";
+import { getRequestAuthTraceSummary, runWithRequestAccessToken } from "./client.js";
 import type { createMercadoLibreTools } from "./index.js";
 
 type Tools = ReturnType<typeof createMercadoLibreTools>["tools"];
@@ -91,10 +91,18 @@ function toolResult(
       const accessToken = scheme?.toLowerCase() === "bearer" && token ? token.trim() : undefined;
       traceIncomingAuth("seller_tool_result", accessToken);
       const result = await runWithRequestAccessToken(accessToken, handler);
-      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      const trace = AUTH_TRACE_ENABLED ? getRequestAuthTraceSummary() : undefined;
+      const traceLine = trace
+        ? `[AUTH_TRACE] inbound_source=${trace.inboundSource} inbound_prefix=${trace.inboundPrefix} inbound_fp=${trace.inboundFp} outbound_count=${trace.outboundCount} outbound_last=${trace.outboundLast ? `${trace.outboundLast.method} ${trace.outboundLast.path} ${trace.outboundLast.source} ${trace.outboundLast.prefix} ${trace.outboundLast.fp}` : "none"}\n`
+        : "";
+      return { content: [{ type: "text", text: `${traceLine}${JSON.stringify(result, null, 2)}` }] };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      return { content: [{ type: "text", text: message }], isError: true };
+      const trace = AUTH_TRACE_ENABLED ? getRequestAuthTraceSummary() : undefined;
+      const traceLine = trace
+        ? `[AUTH_TRACE] inbound_source=${trace.inboundSource} inbound_prefix=${trace.inboundPrefix} inbound_fp=${trace.inboundFp} outbound_count=${trace.outboundCount} outbound_last=${trace.outboundLast ? `${trace.outboundLast.method} ${trace.outboundLast.path} ${trace.outboundLast.source} ${trace.outboundLast.prefix} ${trace.outboundLast.fp}` : "none"}\n`
+        : "";
+      return { content: [{ type: "text", text: `${traceLine}${message}` }], isError: true };
     }
   };
 }
