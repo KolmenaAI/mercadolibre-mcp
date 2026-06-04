@@ -64,13 +64,6 @@ export async function main(): Promise<void> {
 async function runHttp(staticToken: string | undefined): Promise<void> {
   const port = Number(process.env.PORT ?? 8000);
 
-  const server = createMcpServer(staticToken);
-  // Stateless mode (sessionIdGenerator: undefined) — every request is
-  // self-contained. Per-user auth is carried by the inbound Authorization
-  // header, not by an MCP session.
-  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-  await server.connect(transport);
-
   const httpServer = http.createServer(async (req, res) => {
     const start = process.hrtime.bigint();
     const method = req.method ?? "GET";
@@ -105,13 +98,37 @@ async function runHttp(staticToken: string | undefined): Promise<void> {
     }
 
     if (url === HTTP_PATH) {
+      // Per-request McpServer + transport. The SDK's
+      // StreamableHTTPServerTransport keeps `_initialized` and a few
+      // bookkeeping maps on instance state; sharing one transport
+      // across requests corrupts that state on the second request and
+      // causes the SDK to throw synchronously inside hono's
+      // getRequestListener, which then writes a default 500 text/plain
+      // empty body that our outer try/catch never sees. Constructing a
+      // fresh pair per request is the canonical stateless pattern.
+      const server = createMcpServer(staticToken);
+      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+      transport.onerror = (err) => {
+        const message = err instanceof Error ? err.message : String(err);
+        const stack = err instanceof Error ? err.stack : undefined;
+        console.error(
+          JSON.stringify({
+            level: "error",
+            msg: "mcp_transport_error",
+            method,
+            url,
+            error: message,
+            stack,
+          })
+        );
+      };
       try {
+        await server.connect(transport);
         await transport.handleRequest(req, res);
       } catch (err) {
-        // Diagnostic: log the actual exception before responding. The
-        // hono request listener used by the SDK can swallow throws into
-        // its default 500; this log captures the cases where the throw
-        // does reach us so we can tell the two paths apart.
+        // Captures throws that reach our caller — complements the
+        // transport.onerror callback above which captures throws hono
+        // swallows internally.
         const message = err instanceof Error ? err.message : String(err);
         const stack = err instanceof Error ? err.stack : undefined;
         console.error(

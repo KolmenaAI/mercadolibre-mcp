@@ -1,5 +1,13 @@
 # Changelog — @kolmena-ai/meli-mcp
 
+## 1.6.4
+
+Fix the second-request 500 introduced by sharing one `StreamableHTTPServerTransport` across requests. The SDK keeps `_initialized` and request-bookkeeping maps on instance state; in stateless mode each HTTP request needs its own `McpServer + transport`, constructed inside the request handler. Moves the construction inside the `/meli/mcp` branch.
+
+Also wires `transport.onerror` to log SDK-internal errors as `msg: "mcp_transport_error"` on stderr, complementing the existing `mcp_handle_request_threw` and `http_request` lines. Together they cover the three failure surfaces: our `try/catch`, the SDK's internal error callback, and the final HTTP status (even when hono swallows the throw).
+
+Per-request cost is the McpServer construction + 77 tool registrations — small (≤ tens of ms) compared to a real MercadoLibre round-trip.
+
 ## 1.6.3
 
 Diagnostic ship. Adds HTTP-level request logging to `src/cli.ts` so we can see when 1.6.2's tool-level error logger doesn't fire — the SDK's `StreamableHTTPServerTransport` uses `@hono/node-server`'s `getRequestListener`, which catches internal throws and writes its own 500 before our `try/catch` can see them. After 1.6.3, every request emits one JSON line on stderr with `msg: "http_request"`, `level` derived from status (`info`/`warn`/`error`), `method`, `url`, `status`, `duration_ms`. If a throw does reach our catch, a second `msg: "mcp_handle_request_threw"` line is emitted with the error message + stack.
