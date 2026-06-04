@@ -4,6 +4,7 @@ import type { ServerNotification, ServerRequest } from "@modelcontextprotocol/sd
 import { z } from "zod";
 import {
   getInboundAuthContext,
+  getRequestAccessToken,
   getRequestInboundHeaders,
   runWithRequestAccessToken,
   type RedactedInboundHeaders,
@@ -110,7 +111,13 @@ function toolResult(
 ): () => Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   return async () => {
     try {
-      const token = extra ? resolveBearerToken(extra) : undefined;
+      // Inherit the token the outer `wrapToolWithRequestTokenContext`
+      // wrapper already put in the request context when this call site did
+      // not forward `extra`. Without the fallback, a tool registered as
+      // `toolResult(() => tools.x(params))` (no `extra`) re-runs the handler
+      // in a fresh context with `accessToken = undefined`, dropping the
+      // Authorization header → ML 401 "authorization value not present".
+      const token = (extra ? resolveBearerToken(extra) : undefined) ?? getRequestAccessToken();
       const result = await runWithRequestAccessToken(token, handler);
       return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
     } catch (error) {

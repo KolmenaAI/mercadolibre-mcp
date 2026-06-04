@@ -4,6 +4,7 @@ import type { ServerNotification, ServerRequest } from "@modelcontextprotocol/sd
 import { z } from "zod";
 import {
   getInboundAuthContext,
+  getRequestAccessToken,
   getRequestInboundHeaders,
   runWithRequestAccessToken,
   type RedactedInboundHeaders,
@@ -135,7 +136,11 @@ function toolResult(
 ): () => Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   return async () => {
     try {
-      const accessToken = resolveBearerToken(extra);
+      // Inherit the outer wrapper's request token when this call site did
+      // not forward `extra`, so we don't clobber it with `undefined` and
+      // strip the Authorization header (ML 401 "authorization value not
+      // present"). See src/mcp-tools.ts:toolResult.
+      const accessToken = resolveBearerToken(extra) ?? getRequestAccessToken();
       const result = await runWithRequestAccessToken(accessToken, handler);
       return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
     } catch (error) {

@@ -83,6 +83,18 @@ export function getRequestInboundHeaders(): RedactedInboundHeaders | undefined {
   return requestAccessTokenStorage.getStore()?.inboundHeaders;
 }
 
+/**
+ * The access token bound to the current request's AsyncLocalStorage
+ * context, if any. The tool wrappers use this as a fallback so an inner
+ * re-wrap that lacks an explicit `extra` inherits the token the outer
+ * `server.tool` wrapper already established instead of clobbering it with
+ * `undefined` (which would strip the Authorization header → ML 401
+ * "authorization value not present").
+ */
+export function getRequestAccessToken(): string | undefined {
+  return requestAccessTokenStorage.getStore()?.accessToken;
+}
+
 export interface ListingValidationSuccess {
   valid: true;
   status: 204;

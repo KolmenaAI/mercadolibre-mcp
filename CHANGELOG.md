@@ -1,5 +1,11 @@
 # Changelog — @kolmena-ai/meli-mcp
 
+## 1.6.5
+
+### Fixes
+
+- **Per-user OAuth token was dropped for most tools, causing Mercado Libre `401 "authorization value not present"`.** The token travels via `AsyncLocalStorage`: the outer `wrapToolWithRequestTokenContext` wrapper sets it from the request's `Authorization` header for every tool, but `toolResult`'s inner `runWithRequestAccessToken(token, handler)` re-wrapped with `token = extra ? resolveBearerToken(extra) : undefined`. Any tool registered as `toolResult(() => tools.x(params))` **without** forwarding `extra` therefore re-ran its handler in a fresh context with `accessToken = undefined`, clobbering the real token. Only `search_items`, `search_buyable_listings`, and `get_me` forwarded `extra`, so e.g. `get_product_buybox`, `get_product`, `get_item`, `get_seller_info`, and the order/claim/question tools called ML with no `Authorization` header. The buyer and seller `toolResult` wrappers now resolve the token as `fromExtra ?? getRequestAccessToken()`, inheriting the active request token instead of overwriting it with `undefined`. New `getRequestAccessToken()` accessor added in `client.ts`; regression tests added in `tests/client.test.ts`.
+
 ## 1.6.4
 
 Fix the second-request 500 introduced by sharing one `StreamableHTTPServerTransport` across requests. The SDK keeps `_initialized` and request-bookkeeping maps on instance state; in stateless mode each HTTP request needs its own `McpServer + transport`, constructed inside the request handler. Moves the construction inside the `/meli/mcp` branch.

@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { MercadoLibreClient, runWithRequestAccessToken } from "../src/client.js";
+import {
+  MercadoLibreClient,
+  getRequestAccessToken,
+  runWithRequestAccessToken,
+} from "../src/client.js";
 import { MercadoLibreError } from "../src/errors.js";
 
 const mockFetch = vi.fn();
@@ -174,5 +178,55 @@ describe("MercadoLibreClient", () => {
     expect(seenAuthHeaders).toHaveLength(2);
     expect(seenAuthHeaders).toContain("Bearer TOKEN_A");
     expect(seenAuthHeaders).toContain("Bearer TOKEN_B");
+  });
+});
+
+describe("request token context inheritance (regression: tool-token clobber)", () => {
+  beforeEach(() => {
+    mockFetch.mockReset();
+  });
+
+  it("getRequestAccessToken returns the active request token", async () => {
+    await runWithRequestAccessToken("APP_USR-OUTER", async () => {
+      expect(getRequestAccessToken()).toBe("APP_USR-OUTER");
+    });
+    expect(getRequestAccessToken()).toBeUndefined();
+  });
+
+  // The bug: a tool registered as `toolResult(() => tools.x(params))` (no
+  // `extra`) re-ran the handler inside `runWithRequestAccessToken(undefined)`,
+  // which starts a fresh context and drops the token the outer `server.tool`
+  // wrapper already set — so ML returned 401 "authorization value not
+  // present" for every tool except the few that forwarded `extra`.
+  it("re-wrapping with undefined drops the Authorization header", async () => {
+    const client = new MercadoLibreClient();
+    mockFetch.mockResolvedValueOnce(jsonResponse({ id: "MLA1" }));
+
+    await runWithRequestAccessToken("APP_USR-OUTER", async () => {
+      await runWithRequestAccessToken(undefined, async () => {
+        await client.get("/products/MLA1");
+      });
+    });
+
+    const init = mockFetch.mock.calls[0][1] as RequestInit;
+    expect((init.headers as Record<string, string>).Authorization).toBeUndefined();
+  });
+
+  // The fix: tool wrappers now resolve the token as
+  // `fromExtra ?? getRequestAccessToken()`, so when `extra` is absent the
+  // outer request token is inherited instead of clobbered.
+  it("falling back to getRequestAccessToken preserves auth when extra is absent", async () => {
+    const client = new MercadoLibreClient();
+    mockFetch.mockResolvedValueOnce(jsonResponse({ id: "MLA1" }));
+
+    await runWithRequestAccessToken("APP_USR-OUTER", async () => {
+      const token = (undefined as string | undefined) ?? getRequestAccessToken();
+      await runWithRequestAccessToken(token, async () => {
+        await client.get("/products/MLA1");
+      });
+    });
+
+    const init = mockFetch.mock.calls[0][1] as RequestInit;
+    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer APP_USR-OUTER");
   });
 });
