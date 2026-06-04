@@ -327,17 +327,17 @@ const conversion = await ml.tools.get_currency_conversion({
 
 ## Docker
 
-A container image is published at `ghcr.io/kolmenaai/mercadolibre-mcp:<version>` for self-hosted deployments. It bundles the MCP server and [TBXark/mcp-proxy](https://github.com/TBXark/mcp-proxy), so it runs in either **HTTP** (default) or **stdio** mode.
+A container image is published at `ghcr.io/kolmenaai/mercadolibre-mcp:<version>` for self-hosted deployments. The server speaks **Streamable HTTP natively** on `:8000` at `POST /meli/mcp` — no proxy wrapper, so the inbound `Authorization: Bearer <token>` header reaches each tool call and per-user OAuth gateways (Bifrost, etc.) work out of the box.
 
 ### Pull a published image
 
 ```bash
 docker run -p 8000:8000 \
   -e MERCADOLIBRE_ACCESS_TOKEN="${MERCADOLIBRE_ACCESS_TOKEN}" \
-  ghcr.io/kolmenaai/mercadolibre-mcp:1.3.0
+  ghcr.io/kolmenaai/mercadolibre-mcp:1.6.0
 ```
 
-The server speaks Streamable HTTP at `POST http://localhost:8000/meli/mcp`.
+The server speaks Streamable HTTP at `POST http://localhost:8000/meli/mcp`. Liveness probe: `GET /healthz` returns `ok`.
 
 ### Build locally
 
@@ -360,8 +360,8 @@ docker run --rm -p 8000:8000 \
 In another terminal:
 
 ```bash
-# TCP liveness
-nc -zv localhost 8000
+# Liveness
+curl -s http://localhost:8000/healthz
 
 # Initialize and list tools
 curl -s -X POST http://localhost:8000/meli/mcp \
@@ -369,16 +369,19 @@ curl -s -X POST http://localhost:8000/meli/mcp \
   -H 'Accept: application/json, text/event-stream' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 
-# Call a tool
+# Call a tool with a per-request token (overrides MERCADOLIBRE_ACCESS_TOKEN)
 curl -s -X POST http://localhost:8000/meli/mcp \
+  -H "Authorization: Bearer ${USER_MERCADOLIBRE_TOKEN}" \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
-  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"search_items","arguments":{"query":"PlayStation 5","site_id":"MLA","limit":3}}}'
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get_me","arguments":{}}}'
 ```
+
+To verify token propagation end-to-end, set `MELI_AUTH_TRACE=1` in the container — each tool response will prepend a redacted `inbound_source=request|default|none` / `inbound_fp=<sha256[:10]>` line.
 
 ### Test the local image — stdio mode
 
-Override the entrypoint to skip mcp-proxy and attach an MCP client directly to the container's stdin/stdout:
+Override the ENTRYPOINT to run the same binary in stdio mode (the `mercadolibre-mcp` and `meli-mcp` symlinks invoke `node /app/bin/mcp-server.mjs` with no `--transport` flag, defaulting to stdio):
 
 ```bash
 docker run --rm -i \
@@ -400,16 +403,15 @@ printf '%s\n' \
     mercadolibre-mcp:dev
 ```
 
-### Override the proxy config
+### Runtime knobs
 
-The default proxy config is baked at `/etc/mcp-proxy/config.json` (source: [`config/mcp-proxy.docker.json`](./config/mcp-proxy.docker.json)). To change the path, port, or `panicIfInvalid` behavior at runtime, mount your own:
+Transport is selected by a single CLI flag: `--transport stdio|http`. The Docker image's ENTRYPOINT bakes `--transport http`; the `mercadolibre-mcp` / `meli-mcp` symlinks invoke the script without the flag, defaulting to stdio. The MCP endpoint path (`/meli/mcp`) is a hardcoded constant — Bifrost has it baked into its client config.
 
-```bash
-docker run --rm -p 8000:8000 \
-  -v "$(pwd)/my-config.json:/etc/mcp-proxy/config.json:ro" \
-  -e MERCADOLIBRE_ACCESS_TOKEN="${MERCADOLIBRE_ACCESS_TOKEN}" \
-  mercadolibre-mcp:dev
-```
+| Env var | Default | Purpose |
+|---|---|---|
+| `PORT` | `8000` | HTTP listen port. |
+| `MERCADOLIBRE_ACCESS_TOKEN` | _(unset)_ | Fallback token used when no inbound `Authorization: Bearer` is present. |
+| `MELI_AUTH_TRACE` | _(unset)_ | Set to `1` to emit redacted token-source traces for verifying per-user OAuth wiring. |
 
 ---
 

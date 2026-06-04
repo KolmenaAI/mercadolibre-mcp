@@ -2,27 +2,24 @@
 #
 # Container image for @kolmena-ai/meli-mcp.
 #
-# Two runtime modes:
+# The server speaks Streamable HTTP natively on :8000 at POST /meli/mcp.
+# No mcp-proxy wrapper — `Authorization: Bearer <token>` headers from the
+# client are surfaced into each tool call via the MCP SDK's `requestInfo`
+# and scoped per-request through AsyncLocalStorage. This is what enables
+# per-user OAuth integrations like Bifrost.
 #
-#   HTTP (default)
-#     TBXark mcp-proxy bridges the stdio MCP server to Streamable HTTP
-#     on :8000. Endpoint: POST /meli/mcp (path comes from the server
-#     key in /etc/mcp-proxy/config.json).
-#       docker run -p 8000:8000 ghcr.io/kolmenaai/mercadolibre-mcp:<tag>
+# Override transport for stdio-style MCP client testing (Claude Desktop,
+# Inspector) without changing the image:
 #
-#   Stdio
-#     Skip the proxy and attach to the server's stdio directly. Useful
-#     for local MCP clients (Claude Desktop, mcp-inspector) when run
-#     against the container instead of an npm install.
-#       docker run -i --entrypoint mercadolibre-mcp \
-#         ghcr.io/kolmenaai/mercadolibre-mcp:<tag>
+#   docker run -i \
+#     --entrypoint mercadolibre-mcp \
+#     ghcr.io/kolmenaai/mercadolibre-mcp:<tag>
 #
-# Override the proxy config by mounting a file at /etc/mcp-proxy/config.json
-# (downstream wrappers can also COPY a replacement at build time).
+# (The `mercadolibre-mcp` and `meli-mcp` symlinks invoke
+# `node /app/bin/mcp-server.mjs` with no flag, defaulting to stdio.)
 
 ARG NODE_IMAGE_TAG=24.16.0-alpine3.23
 ARG PNPM_VERSION=11.4.0
-ARG MCP_PROXY_GIT_REF=v0.43.2
 
 ############################
 # Stage 1 — build the MCP server with pnpm
@@ -49,22 +46,7 @@ RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
     pnpm deploy --legacy --filter=@kolmena-ai/meli-mcp --prod /prod
 
 ############################
-# Stage 2 — build TBXark mcp-proxy (Go, stdio→HTTP bridge)
-############################
-FROM golang:1.24-alpine AS bridge-builder
-ARG MCP_PROXY_GIT_REF
-
-RUN apk add --no-cache git ca-certificates
-
-RUN git clone --depth=1 --branch "${MCP_PROXY_GIT_REF}" \
-      https://github.com/TBXark/mcp-proxy.git /src
-WORKDIR /src
-RUN CGO_ENABLED=0 GOOS=linux go build \
-      -ldflags='-s -w' -trimpath \
-      -o /out/mcp-proxy .
-
-############################
-# Stage 3 — runtime
+# Stage 2 — runtime
 ############################
 FROM node:${NODE_IMAGE_TAG}
 
@@ -74,8 +56,6 @@ LABEL org.opencontainers.image.title="mercadolibre-mcp" \
 
 WORKDIR /app
 COPY --from=build /prod /app
-COPY --from=bridge-builder /out/mcp-proxy /usr/local/bin/mcp-proxy
-COPY config/mcp-proxy.docker.json /etc/mcp-proxy/config.json
 
 RUN chmod +x /app/bin/mcp-server.mjs \
  && ln -s /app/bin/mcp-server.mjs /usr/local/bin/mercadolibre-mcp \
@@ -84,4 +64,10 @@ RUN chmod +x /app/bin/mcp-server.mjs \
 USER node
 EXPOSE 8000
 
-ENTRYPOINT ["/usr/local/bin/mcp-proxy", "--config", "/etc/mcp-proxy/config.json"]
+# Default the container to Streamable HTTP. Override with
+# `--entrypoint mercadolibre-mcp` (or `meli-mcp`) to get stdio — the
+# symlinks invoke `node /app/bin/mcp-server.mjs` with no flag, which
+# defaults to stdio.
+ENV PORT=8000
+
+ENTRYPOINT ["node", "/app/bin/mcp-server.mjs", "--transport", "http"]

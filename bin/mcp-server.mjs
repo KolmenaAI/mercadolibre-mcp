@@ -1,7 +1,6 @@
 #!/usr/bin/env node
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { createMcpServer } from "../dist/mcp-server.js";
-
-const server = createMcpServer(process.env.MERCADOLIBRE_ACCESS_TOKEN);
-const transport = new StdioServerTransport();
-await server.connect(transport);
+// Thin shim — adds the shebang npm bin entries need (tsc strips them).
+// All substantive logic lives in src/cli.ts → dist/cli.js so it's
+// type-checked.
+import { main } from "../dist/cli.js";
+await main();

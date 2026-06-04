@@ -1,5 +1,37 @@
 # Changelog — @kolmena-ai/meli-mcp
 
+## 1.6.0
+
+Per-user OAuth release — the MCP server now speaks Streamable HTTP natively and propagates `Authorization: Bearer` headers from each inbound request into the underlying MercadoLibre API call.
+
+### Breaking
+
+- **Container ENTRYPOINT changed from `mcp-proxy` to `node bin/mcp-server.mjs`.** The TBXark/mcp-proxy stdio→HTTP bridge has been removed from the image; the server speaks Streamable HTTP directly. Bifrost's existing client config (URL `…:8000/meli/mcp`) is unchanged. Anyone overriding `/etc/mcp-proxy/config.json` at runtime should remove that mount — the file no longer exists.
+- **Removed `config/mcp-proxy.docker.json` and `config/mcp-proxy.example.json`** from the repo.
+- **Dropped the `bridge-builder` (Go / TBXark/mcp-proxy) stage from the Dockerfile.** Build is now single Node stage plus a runtime stage.
+
+### Auth — per-user OAuth via Bifrost
+
+- New transport: **Streamable HTTP** (`@modelcontextprotocol/sdk/server/streamableHttp.js`) on `:$PORT/meli/mcp` (defaults `:8000/meli/mcp`). Stateless mode (`sessionIdGenerator: undefined`) — each HTTP request is self-contained. The MCP endpoint path is a hardcoded constant since Bifrost has it baked into its client config.
+- `bin/mcp-server.mjs` now accepts `--transport stdio|http`; the published `mercadolibre-mcp` / `meli-mcp` binaries default to stdio for npx use (Claude Desktop, Cursor, Inspector). The Docker image bakes `--transport http` into its ENTRYPOINT so production runs HTTP without code change.
+- Inbound `Authorization: Bearer <token>` is read in each MCP tool handler from `extra.requestInfo.headers.authorization` (only populated when the transport is HTTP), then scoped per-request via `AsyncLocalStorage` so concurrent users' tokens never cross-contaminate.
+- Falls back to `MERCADOLIBRE_ACCESS_TOKEN` env var when no inbound bearer is present (preserves the service-account / cron use case).
+- Optional debug instrumentation: set `MELI_AUTH_TRACE=1` to surface redacted token-source / fingerprint in tool responses and stdout for end-to-end verification.
+
+### Why this matters
+
+TBXark/mcp-proxy does not forward inbound HTTP headers to the wrapped stdio MCP server (see [TBXark/mcp-proxy#45](https://github.com/TBXark/mcp-proxy/issues/45) — closed without merging the `ForwardHeaders` patch). With the proxy in the path, Bifrost's per-user `Authorization: Bearer` headers were silently dropped, and every user effectively shared whichever static token the Deployment had been provisioned with. Speaking Streamable HTTP directly closes that gap: `requestInfo.headers.authorization` is populated by the SDK from the inbound HTTP request, end of story.
+
+### Bifrost compatibility
+
+Bifrost's MCP client config (`auth_type: per_user_oauth`, `oauth_config_id: …`) works unchanged. The same URL `http://mcp-meli.<ns>.svc.cluster.local:8000/meli/mcp` still answers — just from `node` instead of `mcp-proxy`. Use the regional `auth.mercadolibre.com.<region>/authorization` endpoint and the global `api.mercadolibre.com/oauth/token` endpoint. MercadoLibre OAuth supports refresh-token rotation (single-use) and PKCE S256 (opt-in at the app level); enabling PKCE on the registered MercadoLibre app is recommended.
+
+### Operational notes
+
+- **Healthcheck**: HTTP transport exposes `GET /healthz` (200 / `ok`) for K8s probes. The previous `tcpSocket: 8000` probes still work.
+- **Graceful shutdown**: `SIGTERM` triggers `http.Server.close()` with a 10s drain timeout before `process.exit`.
+- **Per-tool-call cost**: AsyncLocalStorage scope-wrap is negligible (~µs). Per-request token resolution is O(1) header parse.
+
 ## 1.4.0
 
 Toolchain modernization release — Node 24 + pnpm 11, major dependency bumps, and zero open vulnerabilities. Behavior of the 77 MCP tools is unchanged.
