@@ -72,21 +72,61 @@ async function runHttp(staticToken: string | undefined): Promise<void> {
   await server.connect(transport);
 
   const httpServer = http.createServer(async (req, res) => {
-    if (req.method === "GET" && req.url === "/healthz") {
+    const start = process.hrtime.bigint();
+    const method = req.method ?? "GET";
+    const url = req.url ?? "";
+
+    // Always log the request outcome. This fires regardless of whether
+    // we wrote the response ourselves or the SDK / hono request listener
+    // wrote it for us — so it catches the case where hono's getRequestListener
+    // catches an internal exception and writes its own 500 before our
+    // try/catch can see the throw.
+    res.on("finish", () => {
+      const durationMs = Number(process.hrtime.bigint() - start) / 1_000_000;
+      const status = res.statusCode;
+      const level = status >= 500 ? "error" : status >= 400 ? "warn" : "info";
+      console.error(
+        JSON.stringify({
+          level,
+          msg: "http_request",
+          method,
+          url,
+          status,
+          duration_ms: Math.round(durationMs),
+        })
+      );
+    });
+
+    if (method === "GET" && url === "/healthz") {
       res.statusCode = 200;
       res.setHeader("Content-Type", "text/plain");
       res.end("ok");
       return;
     }
 
-    if (req.url === HTTP_PATH) {
+    if (url === HTTP_PATH) {
       try {
         await transport.handleRequest(req, res);
       } catch (err) {
+        // Diagnostic: log the actual exception before responding. The
+        // hono request listener used by the SDK can swallow throws into
+        // its default 500; this log captures the cases where the throw
+        // does reach us so we can tell the two paths apart.
+        const message = err instanceof Error ? err.message : String(err);
+        const stack = err instanceof Error ? err.stack : undefined;
+        console.error(
+          JSON.stringify({
+            level: "error",
+            msg: "mcp_handle_request_threw",
+            method,
+            url,
+            error: message,
+            stack,
+          })
+        );
         if (!res.headersSent) {
           res.statusCode = 500;
           res.setHeader("Content-Type", "application/json");
-          const message = err instanceof Error ? err.message : String(err);
           res.end(JSON.stringify({ error: message }));
         }
       }

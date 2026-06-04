@@ -1,5 +1,11 @@
 # Changelog — @kolmena-ai/meli-mcp
 
+## 1.6.3
+
+Diagnostic ship. Adds HTTP-level request logging to `src/cli.ts` so we can see when 1.6.2's tool-level error logger doesn't fire — the SDK's `StreamableHTTPServerTransport` uses `@hono/node-server`'s `getRequestListener`, which catches internal throws and writes its own 500 before our `try/catch` can see them. After 1.6.3, every request emits one JSON line on stderr with `msg: "http_request"`, `level` derived from status (`info`/`warn`/`error`), `method`, `url`, `status`, `duration_ms`. If a throw does reach our catch, a second `msg: "mcp_handle_request_threw"` line is emitted with the error message + stack.
+
+Strictly diagnostic — no behavior change, no API change. Plan to dial back the always-on request logging once the Bifrost ↔ mcp-meli wire is verified.
+
 ## 1.6.2
 
 Replaces the `MELI_AUTH_TRACE` debug flag with **always-on structured error logs** — one JSON line per failed tool call on stderr with `level: "error"` (ClickStack / OTel collectors map to `SeverityText=ERROR`).
