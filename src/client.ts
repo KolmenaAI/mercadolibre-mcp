@@ -4,49 +4,56 @@ import { MercadoLibreError } from "./errors.js";
 import type { MercadoLibreJsonObject, MercadoLibreJsonValue } from "./listing-types.js";
 
 const BASE_URL = "https://api.mercadolibre.com";
-type OutboundTrace = {
-  method: string;
-  path: string;
-  source: "request" | "default" | "none";
-  prefix: string;
+
+/**
+ * Redacted view of the inbound `Authorization: Bearer` header for the
+ * current request. Used by error logs so operators can tell whether a
+ * failed MercadoLibre call carried an end-user OAuth token forwarded by
+ * the gateway (`source: "request"`) or fell back to the service-account
+ * env-var token (`source: "none"`).
+ *
+ * Never carries the raw token — only a sha256[:10] fingerprint and the
+ * APP_USR / other / none prefix bucket.
+ */
+export type InboundAuthContext = {
+  source: "request" | "none";
+  prefix: "APP_USR" | "other" | "none";
   fp: string;
 };
 
+export type RedactedInboundHeaders = Record<string, string | string[]>;
+
 type RequestAuthContext = {
   accessToken?: string;
-  inbound: {
-    source: "request" | "none";
-    prefix: string;
-    fp: string;
-  };
-  outbound: OutboundTrace[];
+  inbound: InboundAuthContext;
+  inboundHeaders?: RedactedInboundHeaders;
 };
 
-const requestAccessTokenStorage = new AsyncLocalStorage<RequestAuthContext | undefined>();
-const AUTH_TRACE_ENABLED =
-  process.env.MELI_AUTH_TRACE === "1" || process.env.MELI_AUTH_TRACE?.toLowerCase() === "true";
+const requestAccessTokenStorage = new AsyncLocalStorage<RequestAuthContext>();
 
 function tokenFingerprint(token: string | undefined): string {
   if (!token) return "none";
   return createHash("sha256").update(token).digest("hex").slice(0, 10);
 }
 
-function tokenPrefix(token: string | undefined): string {
+function tokenPrefix(token: string | undefined): "APP_USR" | "other" | "none" {
   if (!token) return "none";
   return token.startsWith("APP_USR") ? "APP_USR" : "other";
 }
 
-function traceAuth(message: string, meta: Record<string, string>): void {
-  if (!AUTH_TRACE_ENABLED) return;
-  const pairs = Object.entries(meta)
-    .map(([key, value]) => `${key}=${value}`)
-    .join(" ");
-  console.log(`[MELI_AUTH_TRACE] ${message} ${pairs}`);
+/** Convert a fetch Headers object to a plain {name: value} record for log emission. */
+export function headersToObject(headers: Headers): Record<string, string> {
+  const obj: Record<string, string> = {};
+  headers.forEach((value, key) => {
+    obj[key] = value;
+  });
+  return obj;
 }
 
 export async function runWithRequestAccessToken<T>(
   accessToken: string | undefined,
-  callback: () => Promise<T>
+  callback: () => Promise<T>,
+  inboundHeaders?: RedactedInboundHeaders
 ): Promise<T> {
   return requestAccessTokenStorage.run(
     {
@@ -56,31 +63,24 @@ export async function runWithRequestAccessToken<T>(
         prefix: tokenPrefix(accessToken),
         fp: tokenFingerprint(accessToken),
       },
-      outbound: [],
+      inboundHeaders,
     },
     callback
   );
 }
 
-export function getRequestAuthTraceSummary():
-  | {
-      inboundSource: string;
-      inboundPrefix: string;
-      inboundFp: string;
-      outboundCount: number;
-      outboundLast?: OutboundTrace;
+export function getInboundAuthContext(): InboundAuthContext {
+  return (
+    requestAccessTokenStorage.getStore()?.inbound ?? {
+      source: "none",
+      prefix: "none",
+      fp: "none",
     }
-  | undefined {
-  const context = requestAccessTokenStorage.getStore();
-  if (!context) return undefined;
-  const outboundLast = context.outbound[context.outbound.length - 1];
-  return {
-    inboundSource: context.inbound.source,
-    inboundPrefix: context.inbound.prefix,
-    inboundFp: context.inbound.fp,
-    outboundCount: context.outbound.length,
-    ...(outboundLast ? { outboundLast } : {}),
-  };
+  );
+}
+
+export function getRequestInboundHeaders(): RedactedInboundHeaders | undefined {
+  return requestAccessTokenStorage.getStore()?.inboundHeaders;
 }
 
 export interface ListingValidationSuccess {
@@ -103,33 +103,12 @@ export class MercadoLibreClient {
     this.accessToken = accessToken;
   }
 
-  private recordOutboundTrace(method: string, path: string): void {
-    const context = requestAccessTokenStorage.getStore();
-    if (!context) return;
-    const effectiveAccessToken = context.accessToken ?? this.accessToken;
-    context.outbound.push({
-      method,
-      path,
-      source: context.accessToken ? "request" : this.accessToken ? "default" : "none",
-      prefix: tokenPrefix(effectiveAccessToken),
-      fp: tokenFingerprint(effectiveAccessToken),
-    });
-    if (context.outbound.length > 20) {
-      context.outbound.splice(0, context.outbound.length - 20);
-    }
-  }
-
   private headers(): Record<string, string> {
     const h: Record<string, string> = {
       "Content-Type": "application/json",
     };
     const requestAccessToken = requestAccessTokenStorage.getStore()?.accessToken;
     const effectiveAccessToken = requestAccessToken ?? this.accessToken;
-    traceAuth("effective_token_selected", {
-      source: requestAccessToken ? "request" : this.accessToken ? "default" : "none",
-      prefix: tokenPrefix(effectiveAccessToken),
-      fp: tokenFingerprint(effectiveAccessToken),
-    });
     if (effectiveAccessToken) {
       h.Authorization = `Bearer ${effectiveAccessToken}`;
     }
@@ -160,16 +139,6 @@ export class MercadoLibreClient {
   }
 
   async postValidate(path: string, body: MercadoLibreJsonObject): Promise<ListingValidationResult> {
-    const requestAccessToken = requestAccessTokenStorage.getStore()?.accessToken;
-    const effectiveAccessToken = requestAccessToken ?? this.accessToken;
-    this.recordOutboundTrace("POST", path);
-    traceAuth("outbound_post_validate", {
-      method: "POST",
-      path,
-      source: requestAccessToken ? "request" : this.accessToken ? "default" : "none",
-      prefix: tokenPrefix(effectiveAccessToken),
-      fp: tokenFingerprint(effectiveAccessToken),
-    });
     const res = await fetch(`${BASE_URL}${path}`, {
       method: "POST",
       headers: this.headers(),
@@ -204,14 +173,6 @@ export class MercadoLibreClient {
     const headers: Record<string, string> = {};
     const requestAccessToken = requestAccessTokenStorage.getStore()?.accessToken;
     const effectiveAccessToken = requestAccessToken ?? this.accessToken;
-    this.recordOutboundTrace("POST", path);
-    traceAuth("outbound_post_multipart", {
-      method: "POST",
-      path,
-      source: requestAccessToken ? "request" : this.accessToken ? "default" : "none",
-      prefix: tokenPrefix(effectiveAccessToken),
-      fp: tokenFingerprint(effectiveAccessToken),
-    });
     if (effectiveAccessToken) {
       headers.Authorization = `Bearer ${effectiveAccessToken}`;
     }
@@ -223,7 +184,13 @@ export class MercadoLibreClient {
     });
     if (!res.ok) {
       const responseBody = await res.text();
-      throw new MercadoLibreError("POST", path, res.status, responseBody);
+      throw new MercadoLibreError(
+        "POST",
+        path,
+        res.status,
+        responseBody,
+        headersToObject(res.headers)
+      );
     }
     return res.json() as Promise<T>;
   }
@@ -242,16 +209,6 @@ export class MercadoLibreClient {
       const qs = new URLSearchParams(options.params).toString();
       if (qs) url += `?${qs}`;
     }
-    const requestAccessToken = requestAccessTokenStorage.getStore()?.accessToken;
-    const effectiveAccessToken = requestAccessToken ?? this.accessToken;
-    this.recordOutboundTrace(method, path);
-    traceAuth("outbound_request", {
-      method,
-      path,
-      source: requestAccessToken ? "request" : this.accessToken ? "default" : "none",
-      prefix: tokenPrefix(effectiveAccessToken),
-      fp: tokenFingerprint(effectiveAccessToken),
-    });
     const init: RequestInit = {
       method,
       headers: this.headers(),
@@ -265,7 +222,13 @@ export class MercadoLibreClient {
     const res = await fetch(url, init);
     if (!res.ok) {
       const responseBody = await res.text();
-      throw new MercadoLibreError(method, path, res.status, responseBody);
+      throw new MercadoLibreError(
+        method,
+        path,
+        res.status,
+        responseBody,
+        headersToObject(res.headers)
+      );
     }
     return res.json() as Promise<T>;
   }

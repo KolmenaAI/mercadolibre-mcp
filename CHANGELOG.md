@@ -1,5 +1,13 @@
 # Changelog — @kolmena-ai/meli-mcp
 
+## 1.6.2
+
+Replaces the `MELI_AUTH_TRACE` debug flag with **always-on structured error logs** — one JSON line per failed tool call on stderr with `level: "error"` (ClickStack / OTel collectors map to `SeverityText=ERROR`).
+
+Each error carries the inbound auth context (token source / prefix / fingerprint), the inbound MCP headers with sensitive ones redacted (`Authorization`, `Cookie`, `Proxy-Authorization`, `X-Amz-Security-Token`), and the MercadoLibre method / path / status / response headers / response body. `traceparent` survives redaction so pod logs can be joined with Bifrost / OTel traces.
+
+Verbose by design for the per-user OAuth rollout — silent on success, structured JSON on failure. stdout stays clean for the MCP JSON-RPC wire stream (stdio transport safety).
+
 ## 1.6.1
 
 `MELI_AUTH_TRACE=1` no longer mutates tool-result payloads — the `[AUTH_TRACE] inbound_source=… outbound_last=…` line is now emitted to stdout only, instead of being prepended to `content[0].text` of every response. This makes the debug flag safe to leave enabled in production: response shape is identical whether the flag is on or off.

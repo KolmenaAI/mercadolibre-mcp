@@ -1,31 +1,46 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type { ServerNotification, ServerRequest } from "@modelcontextprotocol/sdk/types.js";
-import { createHash } from "node:crypto";
 import { z } from "zod";
-import { getRequestAuthTraceSummary, runWithRequestAccessToken } from "./client.js";
+import {
+  getInboundAuthContext,
+  getRequestInboundHeaders,
+  runWithRequestAccessToken,
+  type RedactedInboundHeaders,
+} from "./client.js";
+import { MercadoLibreError } from "./errors.js";
 import type { createMercadoLibreTools } from "./index.js";
 
 type Tools = ReturnType<typeof createMercadoLibreTools>["tools"];
 type ToolExtra = RequestHandlerExtra<ServerRequest, ServerNotification>;
-const AUTH_TRACE_ENABLED =
-  process.env.MELI_AUTH_TRACE === "1" || process.env.MELI_AUTH_TRACE?.toLowerCase() === "true";
 
-function tokenFingerprint(token: string | undefined): string {
-  if (!token) return "none";
-  return createHash("sha256").update(token).digest("hex").slice(0, 10);
-}
+/**
+ * Headers we redact before stashing in AsyncLocalStorage / emitting on
+ * error. Bearer + cookies are sensitive; everything else (including
+ * `traceparent`, `x-request-id`, Bifrost's `x-bf-eh-*` family, etc.) is
+ * kept verbatim so an operator can join with upstream traces.
+ */
+const REDACTED_HEADER_NAMES = new Set([
+  "authorization",
+  "cookie",
+  "proxy-authorization",
+  "x-amz-security-token",
+]);
 
-function tokenPrefix(token: string | undefined): string {
-  if (!token) return "none";
-  return token.startsWith("APP_USR") ? "APP_USR" : "other";
-}
-
-function traceIncomingAuth(source: string, token: string | undefined): void {
-  if (!AUTH_TRACE_ENABLED) return;
-  console.log(
-    `[MELI_AUTH_TRACE] ${source} prefix=${tokenPrefix(token)} fp=${tokenFingerprint(token)}`
-  );
+function redactInboundHeaders(
+  headers: ToolExtra["requestInfo"] extends infer R
+    ? R extends { headers?: infer H }
+      ? H | undefined
+      : undefined
+    : undefined
+): RedactedInboundHeaders | undefined {
+  if (!headers) return undefined;
+  const out: RedactedInboundHeaders = {};
+  for (const [name, value] of Object.entries(headers)) {
+    if (value === undefined) continue;
+    out[name] = REDACTED_HEADER_NAMES.has(name.toLowerCase()) ? "[redacted]" : value;
+  }
+  return out;
 }
 
 function resolveBearerToken(extra: ToolExtra): string | undefined {
@@ -40,16 +55,52 @@ function resolveBearerToken(extra: ToolExtra): string | undefined {
   return token.trim() || undefined;
 }
 
-function logTraceSummary(): void {
-  if (!AUTH_TRACE_ENABLED) return;
-  const trace = getRequestAuthTraceSummary();
-  if (!trace) return;
-  const outboundLast = trace.outboundLast
-    ? `${trace.outboundLast.method} ${trace.outboundLast.path} ${trace.outboundLast.source} ${trace.outboundLast.prefix} ${trace.outboundLast.fp}`
-    : "none";
-  console.log(
-    `[AUTH_TRACE] inbound_source=${trace.inboundSource} inbound_prefix=${trace.inboundPrefix} ` +
-      `inbound_fp=${trace.inboundFp} outbound_count=${trace.outboundCount} outbound_last=${outboundLast}`
+/**
+ * One JSON-line log on stderr per failed tool call. `level: "error"`
+ * lets ClickStack / OTel collectors classify the entry as SeverityText=
+ * ERROR. Includes:
+ *   - the redacted inbound auth context (source/prefix/fp)
+ *   - the redacted inbound MCP request headers (e.g. `traceparent` so
+ *     pod logs can be joined with Bifrost / OTel traces)
+ *   - the MercadoLibre call's method/path/status, the response body,
+ *     and the response headers (e.g. `x-request-id` for ML support
+ *     tickets, `x-rate-limit-*` for 429 diagnosis)
+ *
+ * Verbose by design — we want maximum signal during the per-user OAuth
+ * rollout. Tighten the field set in a follow-up once the wiring is stable.
+ *
+ * stderr, not stdout — the stdio transport reserves stdout for JSON-RPC.
+ */
+function logToolError(error: unknown): void {
+  const auth = getInboundAuthContext();
+  const inboundHeaders = getRequestInboundHeaders();
+  const base: Record<string, unknown> = {
+    level: "error",
+    msg: "meli_tool_error",
+    inbound_source: auth.source,
+    inbound_prefix: auth.prefix,
+    inbound_fp: auth.fp,
+    inbound_headers: inboundHeaders ?? {},
+  };
+  if (error instanceof MercadoLibreError) {
+    console.error(
+      JSON.stringify({
+        ...base,
+        method: error.method,
+        path: error.path,
+        status: error.status,
+        response_headers: error.responseHeaders ?? {},
+        response_body: error.body,
+        error: error.message,
+      })
+    );
+    return;
+  }
+  console.error(
+    JSON.stringify({
+      ...base,
+      error: error instanceof Error ? error.message : String(error),
+    })
   );
 }
 
@@ -60,13 +111,11 @@ function toolResult(
   return async () => {
     try {
       const token = extra ? resolveBearerToken(extra) : undefined;
-      traceIncomingAuth("tool_result", token);
       const result = await runWithRequestAccessToken(token, handler);
-      logTraceSummary();
       return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
     } catch (error) {
+      logToolError(error);
       const message = error instanceof Error ? error.message : String(error);
-      logTraceSummary();
       return { content: [{ type: "text", text: message }], isError: true };
     }
   };
@@ -82,8 +131,12 @@ function wrapToolWithRequestTokenContext(server: McpServer): void {
     const wrappedCallback = (...callbackArgs: unknown[]) => {
       const maybeExtra = callbackArgs[callbackArgs.length - 1] as ToolExtra | undefined;
       const token = maybeExtra ? resolveBearerToken(maybeExtra) : undefined;
-      traceIncomingAuth("tool_wrapper", token);
-      return runWithRequestAccessToken(token, async () => originalCallback(...callbackArgs) as Promise<unknown>);
+      const headers = redactInboundHeaders(maybeExtra?.requestInfo?.headers);
+      return runWithRequestAccessToken(
+        token,
+        async () => originalCallback(...callbackArgs) as Promise<unknown>,
+        headers
+      );
     };
 
     args[callbackIndex] = wrappedCallback;
