@@ -1,5 +1,16 @@
 # Changelog — @kolmena-ai/meli-mcp
 
+## 1.6.6
+
+### Docs / tool guidance (no behaviour change to API calls)
+
+Catalog price discovery was steering the agent to dead/empty endpoints, so users never got prices even after auth was fixed. Realigned tool descriptions and result notes to MercadoLibre's current catalog reality:
+
+- **`get_product_listings`** (`GET /products/{id}/items`) — ML **decommissioned this on 2025-10-01**; it now returns empty. Description and `deprecation_note` updated to say so and to point at `search_listings`.
+- **`search_listings`** (`GET /sites/{site}/search?q=`) — promoted to the **primary price tool**. ML returns `403 forbidden` only for *unauthenticated* calls (per the April-2025 policy change); with a user token it returns live listings + prices. Description clarifies that a 403 *with* a token is an app IP-allowlist / app-block issue, not a wrong tool. The 403 fallback payload now explains this instead of implying the catalog workaround is equivalent.
+- **`get_product_buybox`** — note now states `buy_box_winner` already carries the price, and that a null winner means the catalog page has no price (→ use `search_listings`). Stops suggesting the decommissioned `get_product_listings`.
+- **`search_items` / `get_items_bulk`** — descriptions now state explicitly that `search_items` returns **catalog product ids** which are NOT listing ids and must never be passed to `get_item`/`get_items_bulk` (the latter 404s on catalog ids). This was causing the agent's `404 not_found` on bulk fetches.
+
 ## 1.6.5
 
 ### Fixes

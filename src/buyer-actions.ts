@@ -53,8 +53,8 @@ export async function getProductBuybox(
     buy_box_winner_price_range: product.buy_box_winner_price_range ?? null,
     buy_box_winner: product.buy_box_winner ?? null,
     note: buyBoxItemId
-      ? "Use get_item or get_items_bulk with buy_box_winner_item_id for live price and seller."
-      : "No buy box winner on this product; try get_product_listings while API remains available.",
+      ? "buy_box_winner already includes price/currency_id/seller_id. Use get_item with buy_box_winner_item_id only if you need more listing detail."
+      : "No buy box winner for this catalog product, so it has no catalog price. To find an actual price, call search_listings with the product name (authenticated GET /sites/{site}/search returns live listings + prices). Do NOT pass this catalog product_id to get_item/get_items_bulk — those need a listing/item id, not a catalog id.",
   };
 }
 
@@ -195,7 +195,7 @@ export async function getProductListings(
   return {
     api: "GET /products/{id}/items",
     deprecation_note:
-      "Mercado Libre is deprecating this endpoint; prefer buy_box_winner from get_product_buybox.",
+      "DECOMMISSIONED by Mercado Libre on 2025-10-01 — this endpoint no longer returns competing listings and will be empty. For a catalog price use buy_box_winner (get_product_buybox); for live prices use search_listings (authenticated /sites/{site}/search).",
     product_id: params.product_id,
     result,
   };
@@ -592,7 +592,9 @@ export async function searchListings(
         search_api: "sites/search",
         blocked: true,
         status: 403,
-        fallback: "Use search_buyable_listings for query + price_max + seller ratings without sites/search.",
+        explanation:
+          "Authenticated /sites/search was rejected. ML returns 403 'forbidden' when the request has no user token; 403 PolicyAgent (PA_UNAUTHORIZED) when the app/IP is blocked. If a valid user token is present, this is a DevCenter issue (app IP allowlist / app blocked / user data validation), not a wrong tool.",
+        fallback: "As a degraded fallback try search_buyable_listings (catalog → buy box), but it only returns products that have a buy-box winner.",
         suggestion: {
           tool: "search_buyable_listings",
           arguments: {

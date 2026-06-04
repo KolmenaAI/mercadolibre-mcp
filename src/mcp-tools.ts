@@ -157,7 +157,7 @@ export function registerMercadoLibreTools(server: McpServer, tools: Tools): void
   wrapToolWithRequestTokenContext(server);
   server.tool(
     "search_items",
-    "Search MercadoLibre catalog products by keyword (GET /products/search). Returns catalog product ids — use get_product_buybox or search_buyable_listings for prices and sellers.",
+    "Search MercadoLibre CATALOG products by keyword (GET /products/search). Returns catalog product ids (e.g. MLA26385767) which have NO price and are NOT listing/item ids. For prices use search_listings (live listings + prices) or get_product_buybox (only when the product has a buy-box winner). Never pass these ids to get_item/get_items_bulk.",
     {
       query: z.string(),
       site_id: z.string().optional(),
@@ -187,7 +187,7 @@ export function registerMercadoLibreTools(server: McpServer, tools: Tools): void
 
   server.tool(
     "search_listings",
-    "Try legacy marketplace keyword search GET /sites/{site}/search?q=. Often 403; returns fallback hint to search_buyable_listings.",
+    "PRIMARY price tool. Authenticated marketplace keyword search (GET /sites/{site}/search?q=) returning live listings with price, currency, seller_id and permalink. Requires a user OAuth token (ML returns 403 'forbidden' only when unauthenticated). If it returns 403 PolicyAgent even when authenticated, that is an app IP-allowlist / app-block issue, not a wrong tool.",
     {
       query: z.string(),
       site_id: z.string().optional(),
@@ -220,14 +220,14 @@ export function registerMercadoLibreTools(server: McpServer, tools: Tools): void
 
   server.tool(
     "get_product_buybox",
-    "Resolve buy box winner listing id and price range for a catalog product.",
+    "Catalog buy-box winner for a product. buy_box_winner (when present) already contains price/currency_id/seller_id. Returns null winner for products with no active catalog competition — then use search_listings for a real price.",
     { product_id: z.string() },
     async (params) => toolResult(() => tools.get_product_buybox(params))()
   );
 
   server.tool(
     "get_product_listings",
-    "Competing listings on a catalog PDP (deprecated by ML — prefer buy box).",
+    "DECOMMISSIONED (ML shut down GET /products/{id}/items on 2025-10-01). Returns empty. Use search_listings for live prices.",
     {
       product_id: z.string(),
       limit: z.number().optional(),
@@ -245,7 +245,7 @@ export function registerMercadoLibreTools(server: McpServer, tools: Tools): void
 
   server.tool(
     "get_items_bulk",
-    "Up to 20 listings in one call (GET /items?ids=).",
+    "Up to 20 LISTINGS in one call (GET /items?ids=). item_ids must be listing/item ids (from search_listings or buy_box_winner_item_id), NOT catalog product ids from search_items — catalog ids return 404 not_found here.",
     { item_ids: z.array(z.string()).min(1).max(20) },
     async (params) => toolResult(() => tools.get_items_bulk(params))()
   );
