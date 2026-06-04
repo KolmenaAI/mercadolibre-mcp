@@ -1,5 +1,18 @@
 # Changelog — @kolmena-ai/meli-mcp
 
+## 1.6.1
+
+`MELI_AUTH_TRACE=1` no longer mutates tool-result payloads — the `[AUTH_TRACE] inbound_source=… outbound_last=…` line is now emitted to stdout only, instead of being prepended to `content[0].text` of every response. This makes the debug flag safe to leave enabled in production: response shape is identical whether the flag is on or off.
+
+### Fixes
+
+- `src/mcp-tools.ts:43-66` and `src/mcp-seller-tools.ts:77-108` — extract the trace summary into a `logTraceSummary()` helper that calls `console.log` directly. The success and error branches of `toolResult()` no longer concatenate a `[AUTH_TRACE] …` prefix into the returned text. Tools that always emit JSON `result` payloads now produce strict JSON regardless of `MELI_AUTH_TRACE`.
+- Internal trace events (`[MELI_AUTH_TRACE] tool_result prefix=… fp=…`, `[MELI_AUTH_TRACE] effective_token_selected …`) are unchanged — they were already stdout-only.
+
+### Operational impact
+
+`kubectl logs` is the single channel for auth tracing now. Clients parsing `result.content[0].text` as JSON (or as a strict tool-result type) will no longer break under the debug flag.
+
 ## 1.6.0
 
 Per-user OAuth release — the MCP server now speaks Streamable HTTP natively and propagates `Authorization: Bearer` headers from each inbound request into the underlying MercadoLibre API call.

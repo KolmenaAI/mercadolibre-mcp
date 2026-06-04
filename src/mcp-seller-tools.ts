@@ -74,6 +74,19 @@ const listingDraftParams = {
     .describe("Warranty etc. e.g. WARRANTY_TYPE, WARRANTY_TIME"),
 };
 
+function logTraceSummary(): void {
+  if (!AUTH_TRACE_ENABLED) return;
+  const trace = getRequestAuthTraceSummary();
+  if (!trace) return;
+  const outboundLast = trace.outboundLast
+    ? `${trace.outboundLast.method} ${trace.outboundLast.path} ${trace.outboundLast.source} ${trace.outboundLast.prefix} ${trace.outboundLast.fp}`
+    : "none";
+  console.log(
+    `[AUTH_TRACE] inbound_source=${trace.inboundSource} inbound_prefix=${trace.inboundPrefix} ` +
+      `inbound_fp=${trace.inboundFp} outbound_count=${trace.outboundCount} outbound_last=${outboundLast}`
+  );
+}
+
 function toolResult(
   handler: () => Promise<unknown>,
   extra?: ToolExtra
@@ -91,18 +104,12 @@ function toolResult(
       const accessToken = scheme?.toLowerCase() === "bearer" && token ? token.trim() : undefined;
       traceIncomingAuth("seller_tool_result", accessToken);
       const result = await runWithRequestAccessToken(accessToken, handler);
-      const trace = AUTH_TRACE_ENABLED ? getRequestAuthTraceSummary() : undefined;
-      const traceLine = trace
-        ? `[AUTH_TRACE] inbound_source=${trace.inboundSource} inbound_prefix=${trace.inboundPrefix} inbound_fp=${trace.inboundFp} outbound_count=${trace.outboundCount} outbound_last=${trace.outboundLast ? `${trace.outboundLast.method} ${trace.outboundLast.path} ${trace.outboundLast.source} ${trace.outboundLast.prefix} ${trace.outboundLast.fp}` : "none"}\n`
-        : "";
-      return { content: [{ type: "text", text: `${traceLine}${JSON.stringify(result, null, 2)}` }] };
+      logTraceSummary();
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const trace = AUTH_TRACE_ENABLED ? getRequestAuthTraceSummary() : undefined;
-      const traceLine = trace
-        ? `[AUTH_TRACE] inbound_source=${trace.inboundSource} inbound_prefix=${trace.inboundPrefix} inbound_fp=${trace.inboundFp} outbound_count=${trace.outboundCount} outbound_last=${trace.outboundLast ? `${trace.outboundLast.method} ${trace.outboundLast.path} ${trace.outboundLast.source} ${trace.outboundLast.prefix} ${trace.outboundLast.fp}` : "none"}\n`
-        : "";
-      return { content: [{ type: "text", text: `${traceLine}${message}` }], isError: true };
+      logTraceSummary();
+      return { content: [{ type: "text", text: message }], isError: true };
     }
   };
 }
