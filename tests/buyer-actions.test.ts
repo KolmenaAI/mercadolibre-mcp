@@ -4,7 +4,9 @@ import {
   getProductBuybox,
   getItemsBulk,
   getItemReviews,
+  findOffersForProductQuery,
   searchBuyableListings,
+  rankSellersForQuery,
   searchListings,
   compareProducts,
   askSellerQuestion,
@@ -82,6 +84,76 @@ describe("buyer-actions", () => {
       const url = mockFetch.mock.calls[0][0] as string;
       expect(url).toContain("/reviews/item/MLA123");
       expect(url).toContain("catalog_product_id=MLA999");
+    });
+  });
+
+  describe("findOffersForProductQuery", () => {
+    it("returns catalog_without_price when buy box is missing", async () => {
+      mockFetch
+        .mockResolvedValueOnce(
+          jsonResponse({
+            results: [{ id: "MLA26385767", name: "MacBook Air" }],
+            paging: { total: 1, limit: 10, offset: 0 },
+          })
+        )
+        .mockResolvedValueOnce(
+          jsonResponse({
+            id: "MLA26385767",
+            name: "MacBook Air",
+            buy_box_winner: null,
+            permalink: "https://www.mercadolibre.com.ar/macbook-air",
+          })
+        );
+
+      const result = await findOffersForProductQuery(client, {
+        query: "MacBook Air",
+      });
+
+      expect(result).toMatchObject({
+        strategy: "product_query_catalog_then_buy_box",
+        offer_count: 0,
+        catalog_without_price_count: 1,
+        catalog_without_price: [
+          expect.objectContaining({
+            catalog_product_id: "MLA26385767",
+            permalink: "https://www.mercadolibre.com.ar/macbook-air",
+          }),
+        ],
+      });
+    });
+
+    it("returns offers when buy box exists", async () => {
+      mockFetch
+        .mockResolvedValueOnce(jsonResponse({ results: [{ id: "MLA55016525", name: "Phone" }] }))
+        .mockResolvedValueOnce(jsonResponse({ id: "MLA55016525", buy_box_winner: "MLA903218023" }))
+        .mockResolvedValueOnce(
+          jsonResponse({
+            id: "MLA903218023",
+            title: "Phone listing",
+            price: 50000,
+            seller_id: 111,
+          })
+        )
+        .mockResolvedValueOnce(
+          jsonResponse({
+            id: 111,
+            nickname: "seller1",
+            seller_reputation: { level_id: "5_green" },
+          })
+        );
+
+      const result = await findOffersForProductQuery(client, { query: "iphone" });
+
+      expect(result).toMatchObject({
+        offer_count: 1,
+        offers: [
+          expect.objectContaining({
+            listing_id: "MLA903218023",
+            price: 50000,
+            seller: expect.objectContaining({ nickname: "seller1" }),
+          }),
+        ],
+      });
     });
   });
 
@@ -164,7 +236,74 @@ describe("buyer-actions", () => {
       expect(result).toMatchObject({
         blocked: true,
         status: 403,
-        fallback: expect.stringContaining("search_buyable_listings"),
+        fallback: expect.stringContaining("find_offers_for_product_query"),
+      });
+    });
+  });
+
+  describe("rankSellersForQuery", () => {
+    it("returns fallback when sites search is blocked", async () => {
+      mockFetch.mockResolvedValueOnce(
+        new Response("Forbidden", { status: 403, headers: { "Content-Type": "text/plain" } })
+      );
+
+      const result = await rankSellersForQuery(client, {
+        query: "MacBook Air",
+        top_sellers: 3,
+      });
+
+      expect(result).toMatchObject({
+        strategy: "sites_search_blocked",
+        blocked: true,
+        fallback: expect.objectContaining({
+          tool: "find_offers_for_product_query",
+        }),
+      });
+    });
+
+    it("dedupes sellers and ranks by reputation", async () => {
+      mockFetch
+        .mockResolvedValueOnce(
+          jsonResponse({
+            results: [
+              { id: "MLA1", title: "Mac A", price: 1000000, seller_id: 111 },
+              { id: "MLA2", title: "Mac B", price: 900000, seller_id: 222 },
+              { id: "MLA3", title: "Mac C", price: 950000, seller_id: 111 },
+            ],
+          })
+        )
+        .mockResolvedValueOnce(
+          jsonResponse({
+            id: 111,
+            nickname: "seller_green",
+            seller_reputation: { level_id: "5_green" },
+          })
+        )
+        .mockResolvedValueOnce(
+          jsonResponse({
+            id: 222,
+            nickname: "seller_yellow",
+            seller_reputation: { level_id: "3_yellow" },
+          })
+        );
+
+      const result = await rankSellersForQuery(client, {
+        query: "MacBook Air",
+        top_sellers: 2,
+      });
+
+      expect(result).toMatchObject({
+        strategy: "listings_search_dedupe_sellers",
+        unique_sellers_found: 2,
+        top_sellers: [
+          expect.objectContaining({
+            seller_id: 111,
+            seller: expect.objectContaining({ nickname: "seller_green" }),
+          }),
+          expect.objectContaining({
+            seller_id: 222,
+          }),
+        ],
       });
     });
   });

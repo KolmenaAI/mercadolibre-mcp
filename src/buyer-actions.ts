@@ -6,10 +6,17 @@ import {
   type MarketplaceItemSummary,
 } from "./item-helpers.js";
 import { fetchCatalogProduct, type CatalogProductPayload } from "./product-helpers.js";
-import { searchItems } from "./actions.js";
+import { searchItems, getSellerInfo } from "./actions.js";
+import {
+  dedupeListingsBySeller,
+  extractListingSellerId,
+  extractSitesSearchListings,
+  scoreSellerReputation,
+} from "./buyer-seller-ranking.js";
 import type {
   AskSellerQuestionParams,
   CompareProductsParams,
+  FindOffersForProductQueryParams,
   GetCategoryAttributesParams,
   GetClaimParams,
   GetClaimReturnsParams,
@@ -31,6 +38,7 @@ import type {
   GetQuestionParams,
   GetSellerResponseTimeParams,
   GetShipmentParams,
+  RankSellersForQueryParams,
   SearchBuyableListingsParams,
   SearchListingsBySellerParams,
   SearchListingsParams,
@@ -162,7 +170,7 @@ export async function searchListingsBySeller(
         403,
         JSON.stringify({
           message:
-            "Seller listing search blocked for this app. Use search_buyable_listings or search_items + get_product_buybox.",
+            "Seller listing search blocked for this app. Use find_offers_for_product_query or rank_sellers_for_query when /sites/search is enabled.",
           seller_id: params.seller_id,
         })
       );
@@ -461,9 +469,9 @@ export async function compareProducts(
   };
 }
 
-export async function searchBuyableListings(
+export async function findOffersForProductQuery(
   client: MercadoLibreClient,
-  params: SearchBuyableListingsParams
+  params: FindOffersForProductQueryParams
 ): Promise<unknown> {
   const siteId = params.site_id ?? "MLA";
   const catalogLimit = Math.min(params.catalog_limit ?? 15, 30);
@@ -476,7 +484,8 @@ export async function searchBuyableListings(
   });
 
   const catalogResults = (searchResult as { results: Array<{ id: string; name?: string }> }).results;
-  const resolved: Array<Record<string, unknown>> = [];
+  const offers: Array<Record<string, unknown>> = [];
+  const catalogWithoutPrice: Array<Record<string, unknown>> = [];
   const skipped: Array<{ product_id: string; reason: string }> = [];
 
   for (const catalog of catalogResults) {
@@ -490,6 +499,14 @@ export async function searchBuyableListings(
 
     const itemId = extractBuyBoxItemId(product);
     if (!itemId) {
+      catalogWithoutPrice.push({
+        catalog_product_id: catalog.id,
+        catalog_name: catalog.name ?? product.name,
+        permalink: product.permalink ?? null,
+        buy_box_winner_price_range: product.buy_box_winner_price_range ?? null,
+        note:
+          "No buy-box winner for this catalog product — ML exposes no seller/price via catalog API. Use rank_sellers_for_query when /sites/search is enabled, or share the permalink with the user.",
+      });
       skipped.push({ product_id: catalog.id, reason: "no_buy_box_winner" });
       continue;
     }
@@ -539,21 +556,157 @@ export async function searchBuyableListings(
       }
     }
 
-    resolved.push(row);
+    offers.push(row);
   }
 
   return {
-    strategy: "catalog_search_then_buy_box",
+    strategy: "product_query_catalog_then_buy_box",
+    intent:
+      "Offers for the product the user asked to buy — resolved via catalog keyword search, not category-wide bestseller lists.",
     limitation:
-      "Returns buy-box listings for products matching the query, not every marketplace listing. For a single seller catalog use search_listings_by_seller.",
+      "Only catalog products with an active buy-box winner return price + seller. Products in catalog_without_price have specs/permalinks but no API price until /sites/search works or ML assigns a buy box.",
     site_id: siteId,
     query: params.query,
     price_min: params.price_min ?? null,
     price_max: params.price_max ?? null,
-    matched_count: resolved.length,
+    offer_count: offers.length,
+    catalog_without_price_count: catalogWithoutPrice.length,
     skipped_count: skipped.length,
-    listings: resolved,
+    offers,
+    catalog_without_price: catalogWithoutPrice,
     skipped,
+  };
+}
+
+export async function searchBuyableListings(
+  client: MercadoLibreClient,
+  params: SearchBuyableListingsParams
+): Promise<unknown> {
+  const result = await findOffersForProductQuery(client, params);
+  const payload = result as Record<string, unknown>;
+  return {
+    ...payload,
+    strategy: "catalog_search_then_buy_box",
+    limitation:
+      "Legacy alias of find_offers_for_product_query. Prefer find_offers_for_product_query for product-scoped offers.",
+    matched_count: payload.offer_count ?? 0,
+    listings: payload.offers ?? [],
+  };
+}
+
+export async function rankSellersForQuery(
+  client: MercadoLibreClient,
+  params: RankSellersForQueryParams
+): Promise<unknown> {
+  const siteId = params.site_id ?? "MLA";
+  const topSellers = Math.min(params.top_sellers ?? 3, 10);
+  const listingLimit = Math.min(params.limit ?? 30, 50);
+
+  const searchResult = await searchListings(client, {
+    query: params.query,
+    site_id: siteId,
+    price_min: params.price_min,
+    price_max: params.price_max,
+    limit: listingLimit,
+  });
+
+  if (
+    typeof searchResult === "object" &&
+    searchResult !== null &&
+    (searchResult as Record<string, unknown>).blocked === true
+  ) {
+    const blocked = searchResult as Record<string, unknown>;
+    return {
+      strategy: "sites_search_blocked",
+      query: params.query,
+      site_id: siteId,
+      blocked: true,
+      status: blocked.status ?? 403,
+      explanation: blocked.explanation,
+      fallback: {
+        tool: "find_offers_for_product_query",
+        arguments: {
+          query: params.query,
+          site_id: siteId,
+          price_min: params.price_min,
+          price_max: params.price_max,
+        },
+        note: "When /sites/search?q= is blocked, only buy-box catalog offers are available — often zero for products like MacBook Air.",
+      },
+    };
+  }
+
+  const listings = extractSitesSearchListings(searchResult);
+  const deduped = dedupeListingsBySeller(listings);
+
+  const ranked: Array<Record<string, unknown>> = [];
+  for (const listing of deduped) {
+    const sellerId = extractListingSellerId(listing);
+    if (sellerId === null) {
+      continue;
+    }
+
+    const entry: Record<string, unknown> = {
+      seller_id: sellerId,
+      example_listing: {
+        listing_id: listing.id,
+        title: listing.title,
+        price: listing.price ?? null,
+        currency_id: listing.currency_id ?? null,
+        permalink: listing.permalink ?? null,
+        free_shipping: listing.shipping?.free_shipping ?? null,
+      },
+    };
+
+    if (params.include_seller_ratings !== false) {
+      try {
+        const seller = (await getSellerInfo(client, { seller_id: sellerId })) as Record<
+          string,
+          unknown
+        >;
+        entry.seller = {
+          nickname: seller.nickname,
+          seller_reputation: seller.seller_reputation ?? null,
+          power_seller_status: seller.power_seller_status ?? null,
+        };
+        entry.reputation_score = scoreSellerReputation(seller);
+      } catch {
+        entry.seller = { error: "seller_fetch_failed" };
+        entry.reputation_score = 0;
+      }
+    } else {
+      entry.reputation_score = 0;
+    }
+
+    ranked.push(entry);
+  }
+
+  ranked.sort((a, b) => {
+    const scoreDelta = (b.reputation_score as number) - (a.reputation_score as number);
+    if (scoreDelta !== 0) {
+      return scoreDelta;
+    }
+    const priceA =
+      typeof (a.example_listing as Record<string, unknown>).price === "number"
+        ? ((a.example_listing as Record<string, unknown>).price as number)
+        : Number.POSITIVE_INFINITY;
+    const priceB =
+      typeof (b.example_listing as Record<string, unknown>).price === "number"
+        ? ((b.example_listing as Record<string, unknown>).price as number)
+        : Number.POSITIVE_INFINITY;
+    return priceA - priceB;
+  });
+
+  return {
+    strategy: "listings_search_dedupe_sellers",
+    intent:
+      "Top merchants for the user's product query — derived from live marketplace listings, not category-wide /highlights bestseller lists.",
+    query: params.query,
+    site_id: siteId,
+    listings_scanned: listings.length,
+    unique_sellers_found: ranked.length,
+    top_sellers: ranked.slice(0, topSellers),
+    note: "Ranked by seller reputation score, then example listing price. Use get_item_reviews on example_listing.listing_id for social proof.",
   };
 }
 
@@ -594,15 +747,20 @@ export async function searchListings(
         status: 403,
         explanation:
           "Authenticated /sites/search was rejected. ML returns 403 'forbidden' when the request has no user token; 403 PolicyAgent (PA_UNAUTHORIZED) when the app/IP is blocked. If a valid user token is present, this is a DevCenter issue (app IP allowlist / app blocked / user data validation), not a wrong tool.",
-        fallback: "As a degraded fallback try search_buyable_listings (catalog → buy box), but it only returns products that have a buy-box winner.",
+        fallback:
+          "As a degraded fallback try find_offers_for_product_query (catalog → buy box for the user's product query). When that returns zero offers, catalog products may still appear under catalog_without_price with permalinks.",
         suggestion: {
-          tool: "search_buyable_listings",
+          tool: "find_offers_for_product_query",
           arguments: {
             query: params.query,
             site_id: siteId,
             price_max: params.price_max,
             price_min: params.price_min,
           },
+        },
+        alternate_for_merchants: {
+          tool: "rank_sellers_for_query",
+          note: "Same /sites/search dependency — will also be blocked until DevCenter enables keyword listing search.",
         },
       };
     }

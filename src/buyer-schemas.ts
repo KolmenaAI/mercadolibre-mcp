@@ -132,6 +132,21 @@ export interface SearchBuyableListingsParams {
   include_seller_ratings?: boolean;
 }
 
+/** Same shape as search_buyable_listings — product-scoped catalog → buy-box offers. */
+export type FindOffersForProductQueryParams = SearchBuyableListingsParams;
+
+export interface RankSellersForQueryParams {
+  query: string;
+  site_id?: string;
+  price_max?: number;
+  price_min?: number;
+  /** Marketplace listings to scan before deduping sellers (default 30, max 50). */
+  limit?: number;
+  /** How many ranked sellers to return (default 3, max 10). */
+  top_sellers?: number;
+  include_seller_ratings?: boolean;
+}
+
 export interface SearchListingsParams {
   query: string;
   site_id?: string;

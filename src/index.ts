@@ -36,6 +36,8 @@ import {
   getClaim,
   getClaimReturns,
   compareProducts,
+  findOffersForProductQuery,
+  rankSellersForQuery,
   searchBuyableListings,
   searchListings,
 } from "./buyer-actions.js";
@@ -118,6 +120,8 @@ import type {
   GetClaimParams,
   GetClaimReturnsParams,
   CompareProductsParams,
+  FindOffersForProductQueryParams,
+  RankSellersForQueryParams,
   SearchBuyableListingsParams,
   SearchListingsParams,
 } from "./buyer-schemas.js";
@@ -170,6 +174,10 @@ export function createMercadoLibreTools(accessToken?: string) {
   return {
     tools: {
       search_items: (params: SearchItemsParams) => searchItems(client, params),
+      find_offers_for_product_query: (params: FindOffersForProductQueryParams) =>
+        findOffersForProductQuery(client, params),
+      rank_sellers_for_query: (params: RankSellersForQueryParams) =>
+        rankSellersForQuery(client, params),
       search_buyable_listings: (params: SearchBuyableListingsParams) =>
         searchBuyableListings(client, params),
       search_listings: (params: SearchListingsParams) => searchListings(client, params),

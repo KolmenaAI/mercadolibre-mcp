@@ -43,13 +43,15 @@ describe("MCP Server", () => {
     const result = await client.listTools();
     const names = result.tools.map((t) => t.name).sort();
 
+    expect(names).toContain("find_offers_for_product_query");
+    expect(names).toContain("rank_sellers_for_query");
     expect(names).toContain("search_buyable_listings");
     expect(names).toContain("compare_products");
     expect(names).toContain("get_my_orders");
     expect(names).toContain("seller_get_me");
     expect(names).toContain("seller_get_store_snapshot");
     expect(names).toContain("seller_search_orders");
-    expect(names.length).toBeGreaterThanOrEqual(65);
+    expect(names.length).toBeGreaterThanOrEqual(67);
 
     await client.close();
   });
@@ -192,6 +194,22 @@ describe("MCP Server", () => {
 
       const result = await client.callTool({ name: "get_seller_info", arguments: { seller_id: 999 } });
       expect(result.isError).toBe(true);
+      await client.close();
+    });
+
+    it("search_listings returns isError when blocked (403)", async () => {
+      mockFetch.mockResolvedValueOnce(
+        new Response("Forbidden", { status: 403, headers: { "Content-Type": "text/plain" } })
+      );
+      const { client } = await setupMcpClient();
+
+      const result = await client.callTool({
+        name: "search_listings",
+        arguments: { query: "MacBook Air" },
+      });
+      expect(result.isError).toBe(true);
+      const text = (result.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("find_offers_for_product_query");
       await client.close();
     });
 

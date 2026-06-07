@@ -105,6 +105,13 @@ function logToolError(error: unknown): void {
   );
 }
 
+function toolPayloadIndicatesFailure(result: unknown): boolean {
+  if (!result || typeof result !== "object") {
+    return false;
+  }
+  return (result as Record<string, unknown>).blocked === true;
+}
+
 function toolResult(
   handler: () => Promise<unknown>,
   extra?: ToolExtra
@@ -119,7 +126,11 @@ function toolResult(
       // Authorization header → ML 401 "authorization value not present".
       const token = (extra ? resolveBearerToken(extra) : undefined) ?? getRequestAccessToken();
       const result = await runWithRequestAccessToken(token, handler);
-      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      const isError = toolPayloadIndicatesFailure(result);
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        ...(isError ? { isError: true } : {}),
+      };
     } catch (error) {
       logToolError(error);
       const message = error instanceof Error ? error.message : String(error);
@@ -171,8 +182,38 @@ export function registerMercadoLibreTools(server: McpServer, tools: Tools): void
   );
 
   server.tool(
+    "find_offers_for_product_query",
+    "PRIMARY product-scoped offer tool when the user asks to buy a specific product (e.g. MacBook Air). Chain: GET /products/search?q= → GET /products/{id} buy box → GET /items/{listing_id}. Returns offers with price+seller when buy_box_winner exists, plus catalog_without_price (permalink, no price) when it does not. NOT category-wide /highlights bestsellers.",
+    {
+      query: z.string(),
+      site_id: z.string().optional(),
+      domain_id: z.string().optional(),
+      price_max: z.number().optional(),
+      price_min: z.number().optional(),
+      catalog_limit: z.number().optional().describe("Max catalog products to scan (default 15)"),
+      include_seller_ratings: z.boolean().optional(),
+    },
+    async (params, extra) => toolResult(() => tools.find_offers_for_product_query(params), extra)()
+  );
+
+  server.tool(
+    "rank_sellers_for_query",
+    "Top merchants for the user's product query (e.g. '3 best sellers for MacBook Air with prices'). Uses GET /sites/{site}/search?q= → dedupe seller_id → seller reputation. When blocked (403), returns fallback to find_offers_for_product_query. NOT /highlights category bestsellers.",
+    {
+      query: z.string(),
+      site_id: z.string().optional(),
+      price_max: z.number().optional(),
+      price_min: z.number().optional(),
+      limit: z.number().optional().describe("Listings to scan before deduping sellers (default 30)"),
+      top_sellers: z.number().optional().describe("How many sellers to return (default 3)"),
+      include_seller_ratings: z.boolean().optional(),
+    },
+    async (params, extra) => toolResult(() => tools.rank_sellers_for_query(params), extra)()
+  );
+
+  server.tool(
     "search_buyable_listings",
-    "Buyer search workaround: catalog search → buy box listing → filter by price → optional seller reputation. Use instead of blocked sites/search?q= for 'listings under $X with seller ratings'.",
+    "Legacy alias of find_offers_for_product_query. Prefer find_offers_for_product_query for product the user wants to buy.",
     {
       query: z.string(),
       site_id: z.string().optional(),
@@ -187,7 +228,7 @@ export function registerMercadoLibreTools(server: McpServer, tools: Tools): void
 
   server.tool(
     "search_listings",
-    "PRIMARY price tool. Authenticated marketplace keyword search (GET /sites/{site}/search?q=) returning live listings with price, currency, seller_id and permalink. Requires a user OAuth token (ML returns 403 'forbidden' only when unauthenticated). If it returns 403 PolicyAgent even when authenticated, that is an app IP-allowlist / app-block issue, not a wrong tool.",
+    "Marketplace keyword listing search (GET /sites/{site}/search?q=). Use when enabled for open-market prices+sellers. Prefer rank_sellers_for_query for 'best merchants for product X'; prefer find_offers_for_product_query when /sites/search is blocked. Returns isError when blocked (403).",
     {
       query: z.string(),
       site_id: z.string().optional(),

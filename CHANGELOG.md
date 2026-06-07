@@ -1,5 +1,14 @@
 # Changelog — @kolmena-ai/meli-mcp
 
+## 1.7.0
+
+### Buyer product-query tools
+
+- **`find_offers_for_product_query`** — product-scoped discovery for "I want to buy X": `GET /products/search` → buy box → listing + optional seller reputation. Returns `offers` (priced when buy box exists) and **`catalog_without_price`** (permalink + specs path when `buy_box_winner` is null) so agents stop silently dropping MacBook-style catalog hits.
+- **`rank_sellers_for_query`** — "top N merchants for product query": `GET /sites/search?q=` → dedupe sellers → reputation score → example listing price. On 403, returns structured fallback pointing at `find_offers_for_product_query` (not category `/highlights` bestsellers).
+- **`search_buyable_listings`** — now a legacy alias of `find_offers_for_product_query` (still returns `listings` / `matched_count` for backward compatibility).
+- **`search_listings`** — 403 blocked payloads now surface as **`isError: true`** in MCP tool results; fallback hints updated to new tool names.
+
 ## 1.6.6
 
 ### Docs / tool guidance (no behaviour change to API calls)
