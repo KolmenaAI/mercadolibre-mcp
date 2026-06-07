@@ -1,5 +1,14 @@
 # Changelog — @kolmena-ai/meli-mcp
 
+## 1.8.0
+
+### Merchant discovery without `/sites/search?q=`
+
+- **Removed `search_listings` MCP tool** — `GET /sites/{site}/search?q=` is not the documented buyer path and returns 403 for this app. The programmatic helper still returns a deprecation payload pointing at `rank_sellers_for_query`.
+- **`rank_sellers_for_query` rewritten** — new strategy `domain_catalog_category_sellers`: `domain_discovery` → `products/search` in domain → buy-box sellers + best-effort category listing scan → reputation rank → top N sellers' active inventory via `GET /users/{seller_id}/items/search` filtered by query tokens. Returns `top_sellers[].listings[]` with prices per merchant.
+- **`search_listings_by_seller`** — now uses `GET /users/{seller_id}/items/search` + multiget instead of `/sites/search?seller_id=`.
+- Tool descriptions updated to stop referencing `search_listings`.
+
 ## 1.7.0
 
 ### Buyer product-query tools

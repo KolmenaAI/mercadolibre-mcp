@@ -168,7 +168,7 @@ export function registerMercadoLibreTools(server: McpServer, tools: Tools): void
   wrapToolWithRequestTokenContext(server);
   server.tool(
     "search_items",
-    "Search MercadoLibre CATALOG products by keyword (GET /products/search). Returns catalog product ids (e.g. MLA26385767) which have NO price and are NOT listing/item ids. For prices use search_listings (live listings + prices) or get_product_buybox (only when the product has a buy-box winner). Never pass these ids to get_item/get_items_bulk.",
+    "Search MercadoLibre CATALOG products by keyword (GET /products/search). Returns catalog product ids (e.g. MLA26385767) which have NO price and are NOT listing/item ids. For merchants+prices use rank_sellers_for_query; for buy-box offers use find_offers_for_product_query. Never pass catalog ids to get_item/get_items_bulk.",
     {
       query: z.string(),
       site_id: z.string().optional(),
@@ -198,14 +198,17 @@ export function registerMercadoLibreTools(server: McpServer, tools: Tools): void
 
   server.tool(
     "rank_sellers_for_query",
-    "Top merchants for the user's product query (e.g. '3 best sellers for MacBook Air with prices'). Uses GET /sites/{site}/search?q= → dedupe seller_id → seller reputation. When blocked (403), returns fallback to find_offers_for_product_query. NOT /highlights category bestsellers.",
+    "PRIMARY merchant-ranking tool (e.g. '3 best sellers for MacBook Air with prices'). Flow: domain_discovery → products/search in domain → buy-box + category sellers → reputation rank → each seller's active inventory via GET /users/{id}/items/search. Does NOT use deprecated GET /sites/search?q=.",
     {
       query: z.string(),
       site_id: z.string().optional(),
+      domain_id: z.string().optional().describe("Catalog domain e.g. MLA-NOTEBOOKS (auto via domain_discovery when omitted)"),
       price_max: z.number().optional(),
       price_min: z.number().optional(),
-      limit: z.number().optional().describe("Listings to scan before deduping sellers (default 30)"),
+      catalog_limit: z.number().optional().describe("Catalog products to scan for buy-box sellers (default 20)"),
+      limit: z.number().optional().describe("Category listing scan size when category_id known (default 50)"),
       top_sellers: z.number().optional().describe("How many sellers to return (default 3)"),
+      listings_per_seller: z.number().optional().describe("Active listings per top seller to inspect (default 50)"),
       include_seller_ratings: z.boolean().optional(),
     },
     async (params, extra) => toolResult(() => tools.rank_sellers_for_query(params), extra)()
@@ -227,22 +230,8 @@ export function registerMercadoLibreTools(server: McpServer, tools: Tools): void
   );
 
   server.tool(
-    "search_listings",
-    "Marketplace keyword listing search (GET /sites/{site}/search?q=). Use when enabled for open-market prices+sellers. Prefer rank_sellers_for_query for 'best merchants for product X'; prefer find_offers_for_product_query when /sites/search is blocked. Returns isError when blocked (403).",
-    {
-      query: z.string(),
-      site_id: z.string().optional(),
-      price_max: z.number().optional(),
-      price_min: z.number().optional(),
-      limit: z.number().optional(),
-      offset: z.number().optional(),
-    },
-    async (params) => toolResult(() => tools.search_listings(params))()
-  );
-
-  server.tool(
     "search_listings_by_seller",
-    "List marketplace listings from one seller (GET /sites/{site}/search?seller_id=).",
+    "Active listings from one seller (GET /users/{seller_id}/items/search?status=active → GET /items?ids=).",
     {
       seller_id: z.number(),
       site_id: z.string().optional(),
@@ -261,14 +250,14 @@ export function registerMercadoLibreTools(server: McpServer, tools: Tools): void
 
   server.tool(
     "get_product_buybox",
-    "Catalog buy-box winner for a product. buy_box_winner (when present) already contains price/currency_id/seller_id. Returns null winner for products with no active catalog competition — then use search_listings for a real price.",
+    "Catalog buy-box winner for a product. buy_box_winner (when present) already contains price/currency_id/seller_id. Returns null winner for products with no active catalog competition — then use rank_sellers_for_query for merchant discovery.",
     { product_id: z.string() },
     async (params) => toolResult(() => tools.get_product_buybox(params))()
   );
 
   server.tool(
     "get_product_listings",
-    "DECOMMISSIONED (ML shut down GET /products/{id}/items on 2025-10-01). Returns empty. Use search_listings for live prices.",
+    "DECOMMISSIONED (ML shut down GET /products/{id}/items on 2025-10-01). Returns empty. Use rank_sellers_for_query or find_offers_for_product_query for prices.",
     {
       product_id: z.string(),
       limit: z.number().optional(),
@@ -286,7 +275,7 @@ export function registerMercadoLibreTools(server: McpServer, tools: Tools): void
 
   server.tool(
     "get_items_bulk",
-    "Up to 20 LISTINGS in one call (GET /items?ids=). item_ids must be listing/item ids (from search_listings or buy_box_winner_item_id), NOT catalog product ids from search_items — catalog ids return 404 not_found here.",
+    "Up to 20 LISTINGS in one call (GET /items?ids=). item_ids must be listing/item ids (from rank_sellers_for_query, search_listings_by_seller, or buy_box_winner_item_id), NOT catalog product ids from search_items — catalog ids return 404 not_found here.",
     { item_ids: z.array(z.string()).min(1).max(20) },
     async (params) => toolResult(() => tools.get_items_bulk(params))()
   );

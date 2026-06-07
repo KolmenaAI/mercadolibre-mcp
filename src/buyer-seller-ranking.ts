@@ -81,6 +81,56 @@ const POWER_SELLER_SCORE: Record<string, number> = {
   silver: 10,
 };
 
+export interface DomainDiscoveryHit {
+  domain_id?: string;
+  category_id?: string;
+  category_name?: string;
+  [key: string]: unknown;
+}
+
+export function parseDomainDiscoveryTop(payload: unknown): {
+  domain_id: string | null;
+  category_id: string | null;
+  category_name: string | null;
+} {
+  const hits = Array.isArray(payload) ? payload : [];
+  const top = hits[0];
+  if (!top || typeof top !== "object") {
+    return { domain_id: null, category_id: null, category_name: null };
+  }
+  const row = top as DomainDiscoveryHit;
+  return {
+    domain_id: typeof row.domain_id === "string" ? row.domain_id : null,
+    category_id: typeof row.category_id === "string" ? row.category_id : null,
+    category_name: typeof row.category_name === "string" ? row.category_name : null,
+  };
+}
+
+/** Tokenize a buyer query for loose title matching on seller inventory. */
+export function tokenizeProductQuery(query: string): string[] {
+  return query
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length >= 3);
+}
+
+export function titleMatchesProductQuery(title: string, tokens: string[]): boolean {
+  if (tokens.length === 0) {
+    return true;
+  }
+  const normalized = title
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "");
+  const matched = tokens.filter((token) => normalized.includes(token)).length;
+  if (tokens.length === 1) {
+    return matched === 1;
+  }
+  return matched >= Math.min(2, tokens.length);
+}
+
 export function scoreSellerReputation(seller: Record<string, unknown>): number {
   let score = 0;
   const reputation = seller.seller_reputation;

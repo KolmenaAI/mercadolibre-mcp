@@ -138,12 +138,18 @@ export type FindOffersForProductQueryParams = SearchBuyableListingsParams;
 export interface RankSellersForQueryParams {
   query: string;
   site_id?: string;
+  /** Catalog domain filter (e.g. MLA-NOTEBOOKS). Resolved via domain_discovery when omitted. */
+  domain_id?: string;
   price_max?: number;
   price_min?: number;
-  /** Marketplace listings to scan before deduping sellers (default 30, max 50). */
+  /** Catalog products to scan for buy-box sellers (default 20, max 30). */
+  catalog_limit?: number;
+  /** Category listing scan size when category_id is known (default 50, max 50). */
   limit?: number;
   /** How many ranked sellers to return (default 3, max 10). */
   top_sellers?: number;
+  /** Max active listings per top seller to inspect (default 50, max 50). */
+  listings_per_seller?: number;
   include_seller_ratings?: boolean;
 }
 

@@ -223,55 +223,57 @@ describe("buyer-actions", () => {
   });
 
   describe("searchListings", () => {
-    it("returns fallback hint on 403", async () => {
-      mockFetch.mockResolvedValueOnce(
-        new Response("Forbidden", { status: 403, headers: { "Content-Type": "text/plain" } })
-      );
-
+    it("returns deprecation payload without calling ML", async () => {
       const result = await searchListings(client, {
         query: "laptop",
         price_max: 500000,
       });
 
       expect(result).toMatchObject({
-        blocked: true,
-        status: 403,
-        fallback: expect.stringContaining("find_offers_for_product_query"),
+        deprecated: true,
+        removed: true,
+        alternative: expect.objectContaining({
+          tool: "rank_sellers_for_query",
+        }),
       });
+      expect(mockFetch).not.toHaveBeenCalled();
     });
   });
 
   describe("rankSellersForQuery", () => {
-    it("returns fallback when sites search is blocked", async () => {
-      mockFetch.mockResolvedValueOnce(
-        new Response("Forbidden", { status: 403, headers: { "Content-Type": "text/plain" } })
-      );
-
-      const result = await rankSellersForQuery(client, {
-        query: "MacBook Air",
-        top_sellers: 3,
-      });
-
-      expect(result).toMatchObject({
-        strategy: "sites_search_blocked",
-        blocked: true,
-        fallback: expect.objectContaining({
-          tool: "find_offers_for_product_query",
-        }),
-      });
-    });
-
-    it("dedupes sellers and ranks by reputation", async () => {
+    it("ranks sellers via domain discovery and seller inventory", async () => {
       mockFetch
         .mockResolvedValueOnce(
+          jsonResponse([
+            {
+              domain_id: "MLA-NOTEBOOKS",
+              category_id: "MLA1652",
+              category_name: "Notebooks",
+            },
+          ])
+        )
+        .mockResolvedValueOnce(
           jsonResponse({
-            results: [
-              { id: "MLA1", title: "Mac A", price: 1000000, seller_id: 111 },
-              { id: "MLA2", title: "Mac B", price: 900000, seller_id: 222 },
-              { id: "MLA3", title: "Mac C", price: 950000, seller_id: 111 },
-            ],
+            results: [{ id: "MLA100", name: "MacBook Air" }],
           })
         )
+        .mockResolvedValueOnce(
+          jsonResponse({
+            id: "MLA100",
+            buy_box_winner: { item_id: "MLA-L1" },
+          })
+        )
+        .mockResolvedValueOnce(
+          jsonResponse({
+            id: "MLA-L1",
+            title: "MacBook Air M2",
+            price: 1000000,
+            currency_id: "ARS",
+            seller_id: 111,
+            permalink: "https://example.com/1",
+          })
+        )
+        .mockResolvedValueOnce(jsonResponse({ results: [] }))
         .mockResolvedValueOnce(
           jsonResponse({
             id: 111,
@@ -279,29 +281,34 @@ describe("buyer-actions", () => {
             seller_reputation: { level_id: "5_green" },
           })
         )
+        .mockResolvedValueOnce(jsonResponse({ results: ["MLA-L1", "MLA-L9"] }))
         .mockResolvedValueOnce(
-          jsonResponse({
-            id: 222,
-            nickname: "seller_yellow",
-            seller_reputation: { level_id: "3_yellow" },
-          })
+          jsonResponse([
+            { id: "MLA-L1", title: "MacBook Air M2", price: 1000000, currency_id: "ARS" },
+            { id: "MLA-L9", title: "Other phone", price: 50000, currency_id: "ARS" },
+          ])
         );
 
       const result = await rankSellersForQuery(client, {
         query: "MacBook Air",
-        top_sellers: 2,
+        top_sellers: 1,
       });
 
       expect(result).toMatchObject({
-        strategy: "listings_search_dedupe_sellers",
-        unique_sellers_found: 2,
+        strategy: "domain_catalog_category_sellers",
+        domain_id: "MLA-NOTEBOOKS",
+        category_id: "MLA1652",
+        unique_sellers_found: 1,
         top_sellers: [
           expect.objectContaining({
             seller_id: 111,
-            seller: expect.objectContaining({ nickname: "seller_green" }),
-          }),
-          expect.objectContaining({
-            seller_id: 222,
+            listing_count: 1,
+            listings: [
+              expect.objectContaining({
+                listing_id: "MLA-L1",
+                title: "MacBook Air M2",
+              }),
+            ],
           }),
         ],
       });
