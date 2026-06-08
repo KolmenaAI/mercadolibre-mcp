@@ -16,15 +16,19 @@ describe("createMercadoLibreTools", () => {
     const { tools } = createMercadoLibreTools();
 
     expect(typeof tools.search_items).toBe("function");
-    expect(typeof tools.search_buyable_listings).toBe("function");
+    expect(typeof tools.find_offers_for_product_query).toBe("function");
     expect(typeof tools.get_product_buybox).toBe("function");
-    expect(typeof tools.get_items_bulk).toBe("function");
-    expect(typeof tools.compare_products).toBe("function");
+    expect(typeof tools.rank_sellers_for_query).toBe("function");
     expect(typeof tools.get_my_orders).toBe("function");
     expect(typeof tools.search_my_claims).toBe("function");
     expect(typeof tools.seller_get_me).toBe("function");
     expect(typeof tools.seller_get_store_snapshot).toBe("function");
-    expect(Object.keys(tools).length).toBeGreaterThanOrEqual(65);
+    // Removed tools are no longer in the map.
+    expect(tools.get_item).toBeUndefined();
+    expect(tools.get_items_bulk).toBeUndefined();
+    expect(tools.compare_products).toBeUndefined();
+    expect(tools.search_buyable_listings).toBeUndefined();
+    expect(Object.keys(tools).length).toBeGreaterThanOrEqual(56);
   });
 
   it("tools call the API correctly", async () => {
@@ -39,9 +43,6 @@ describe("createMercadoLibreTools", () => {
         headers: expect.objectContaining({ Authorization: "Bearer TEST_TOKEN" }),
       })
     );
-
-    mockFetch.mockResolvedValueOnce(jsonResponse({ id: "MLA1" }));
-    await tools.get_item({ item_id: "MLA1" });
 
     mockFetch.mockResolvedValueOnce(jsonResponse({ plain_text: "desc" }));
     await tools.get_item_description({ item_id: "MLA1" });

@@ -3,7 +3,6 @@ import { MercadoLibreClient } from "../src/client.js";
 import {
   searchItems,
   getProduct,
-  getItem,
   getItemDescription,
   getCategories,
   getCategory,
@@ -107,46 +106,6 @@ describe("actions", () => {
         resource_type: "catalog_product",
         api: "GET /products/{id}",
         product,
-      });
-    });
-  });
-
-  describe("getItem", () => {
-    it("fetches marketplace item by ID", async () => {
-      const item = { id: "MLA123", title: "Test Item", price: 50000 };
-      mockFetch.mockResolvedValueOnce(jsonResponse(item));
-
-      const result = await getItem(client, { item_id: "MLA123" });
-
-      const url = mockFetch.mock.calls[0][0] as string;
-      expect(url).toContain("/items/MLA123");
-      expect(result).toEqual({
-        resource_type: "marketplace_item",
-        api: "GET /items/{id}",
-        item,
-      });
-    });
-
-    it("falls back to catalog product when listing not found", async () => {
-      mockFetch.mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({ message: "not found", error: "not_found", status: 404 }),
-          { status: 404, headers: { "Content-Type": "application/json" } }
-        )
-      );
-      mockFetch.mockResolvedValueOnce(
-        jsonResponse({ id: "MLA55016525", name: "Catalog product" })
-      );
-
-      const result = await getItem(client, { item_id: "MLA55016525" });
-
-      expect(mockFetch).toHaveBeenCalledTimes(2);
-      const productUrl = mockFetch.mock.calls[1][0] as string;
-      expect(productUrl).toContain("/products/MLA55016525");
-      expect(result).toMatchObject({
-        resource_type: "catalog_product",
-        resolved_from: "item_id",
-        product: { id: "MLA55016525", name: "Catalog product" },
       });
     });
   });

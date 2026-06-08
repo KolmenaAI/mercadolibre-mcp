@@ -1,5 +1,25 @@
 # Changelog — @kolmena-ai/meli-mcp
 
+## 1.9.6
+
+### Remove buyer-inaccessible / decommissioned / legacy tools
+
+These tools either always failed for a buyer's per-user OAuth token (third-party listing reads → `access_denied`), were decommissioned by Mercado Libre, or were superseded — and none are used by the buyer or seller skills. Keeping them only invited the agent to call dead endpoints. Removed:
+
+- `get_item`, `get_items_bulk`, `get_item_shipping_options`, `get_item_sale_terms` — third-party listing reads are `access_denied` for buyers.
+- `compare_products` — built on `get_items_bulk` (same block).
+- `search_listings`, `search_listings_by_seller` — `GET /sites/{site}/search` is blocked for these apps.
+- `get_product_listings` — decommissioned by ML on 2025-10-01 (always empty).
+- `search_buyable_listings` — legacy alias of `find_offers_for_product_query`.
+
+**Use instead:** `find_offers_for_product_query` (offers + prices + permalinks, api/web), `get_product` / `get_product_buybox` (catalog datasheet + buy box), `rank_sellers_for_query` (merchants + live prices), `get_item_reviews` (with scraped fallback). Seller flows are unaffected (`seller_*` tools). `FindOffersForProductQueryParams` is now a standalone interface (was an alias of the removed `SearchBuyableListingsParams`).
+
+## 1.9.5
+
+### Remove `get_seller_response_time` (buyer-inaccessible)
+
+`GET /users/{id}/questions/response_time` is **seller-private**: a buyer's OAuth token always gets `403 forbidden` ("User X cannot access data for user Y"), so the tool could never answer "does this seller reply quickly?". The metric isn't exposed by ML's public API or recoverable via the scraper (the actor's seller mode returns only the storefront catalog), so the tool is removed rather than left as a guaranteed failure. Seller trust signals still come from `get_seller_info` (reputation, level, sales, claims) and `rank_sellers_for_query`.
+
 ## 1.9.4
 
 ### Web offers from website search (fixes niche/new models, e.g. MacBook Air M4)

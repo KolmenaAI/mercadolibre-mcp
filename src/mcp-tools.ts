@@ -229,33 +229,6 @@ export function registerMercadoLibreTools(server: McpServer, tools: Tools): void
   );
 
   server.tool(
-    "search_buyable_listings",
-    "Legacy alias of find_offers_for_product_query. Prefer find_offers_for_product_query for product the user wants to buy.",
-    {
-      query: z.string(),
-      site_id: z.string().optional(),
-      domain_id: z.string().optional(),
-      price_max: z.number().optional(),
-      price_min: z.number().optional(),
-      catalog_limit: z.number().optional().describe("Max catalog products to scan (default 15)"),
-      include_seller_ratings: z.boolean().optional(),
-    },
-    async (params, extra) => toolResult(() => tools.search_buyable_listings(params), extra)()
-  );
-
-  server.tool(
-    "search_listings_by_seller",
-    "Active listings from one seller (GET /users/{seller_id}/items/search?status=active → GET /items?ids=).",
-    {
-      seller_id: z.number(),
-      site_id: z.string().optional(),
-      limit: z.number().optional(),
-      offset: z.number().optional(),
-    },
-    async (params) => toolResult(() => tools.search_listings_by_seller(params))()
-  );
-
-  server.tool(
     "get_product",
     "Catalog product datasheet (GET /products/{id}).",
     { product_id: z.string() },
@@ -273,44 +246,6 @@ export function registerMercadoLibreTools(server: McpServer, tools: Tools): void
         .describe("Site id for web-price country (e.g. MLA). Derived from product_id when omitted."),
     },
     async (params) => toolResult(() => tools.get_product_buybox(params))()
-  );
-
-  server.tool(
-    "get_product_listings",
-    "DECOMMISSIONED (ML shut down GET /products/{id}/items on 2025-10-01). Returns empty. Use rank_sellers_for_query or find_offers_for_product_query for prices.",
-    {
-      product_id: z.string(),
-      limit: z.number().optional(),
-      offset: z.number().optional(),
-    },
-    async (params) => toolResult(() => tools.get_product_listings(params))()
-  );
-
-  server.tool(
-    "get_item",
-    "Marketplace listing or catalog fallback.",
-    { item_id: z.string() },
-    async (params) => toolResult(() => tools.get_item(params))()
-  );
-
-  server.tool(
-    "get_items_bulk",
-    "Up to 20 LISTINGS in one call (GET /items?ids=). item_ids must be listing/item ids (from rank_sellers_for_query, search_listings_by_seller, or buy_box_winner_item_id), NOT catalog product ids from search_items — catalog ids return 404 not_found here.",
-    { item_ids: z.array(z.string()).min(1).max(20) },
-    async (params) => toolResult(() => tools.get_items_bulk(params))()
-  );
-
-  server.tool(
-    "compare_products",
-    "Compare 2–5 listings: bulk items + optional reviews and shipping.",
-    {
-      item_ids: z.array(z.string()).optional(),
-      product_ids: z.array(z.string()).optional(),
-      include_reviews: z.boolean().optional(),
-      include_shipping: z.boolean().optional(),
-      zip_code: z.string().optional(),
-    },
-    async (params) => toolResult(() => tools.compare_products(params))()
   );
 
   server.tool(
@@ -332,23 +267,6 @@ export function registerMercadoLibreTools(server: McpServer, tools: Tools): void
         .describe("Site id for the web-review fallback country (e.g. MLA). Derived from the id when omitted."),
     },
     async (params) => toolResult(() => tools.get_item_reviews(params))()
-  );
-
-  server.tool(
-    "get_item_shipping_options",
-    "Shipping options and costs for a listing; optional zip_code.",
-    {
-      item_id: z.string(),
-      zip_code: z.string().optional(),
-    },
-    async (params) => toolResult(() => tools.get_item_shipping_options(params))()
-  );
-
-  server.tool(
-    "get_item_sale_terms",
-    "Installments, warranty, and sale_terms from a listing.",
-    { item_id: z.string() },
-    async (params) => toolResult(() => tools.get_item_sale_terms(params))()
   );
 
   server.tool(
@@ -395,13 +313,6 @@ export function registerMercadoLibreTools(server: McpServer, tools: Tools): void
         .describe("Also return web_storefront with the seller's live catalog (price_source: web)."),
     },
     async (params) => toolResult(() => tools.get_seller_info(params))()
-  );
-
-  server.tool(
-    "get_seller_response_time",
-    "Seller average question response time in minutes.",
-    { seller_id: z.number() },
-    async (params) => toolResult(() => tools.get_seller_response_time(params))()
   );
 
   server.tool(

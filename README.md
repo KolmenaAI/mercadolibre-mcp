@@ -54,10 +54,10 @@ Most calls need `MERCADOLIBRE_ACCESS_TOKEN` (OAuth `APP_USR-...`).
 
 1. **`search_items`** — keyword search → `results[].id` are **catalog product ids**
 2. **`get_product`** — full datasheet for that id (recommended)
-3. **`get_item`** / **`get_item_description`** — same id works (auto-fallback to catalog if not a listing)
-4. Use **`product.permalink`** from the response as the buyer link
+3. **`find_offers_for_product_query`** — offers (price + seller + permalink) for what the user wants to buy
+4. Use **`product.permalink`** / each offer's `permalink` as the buyer link
 
-Ids from search are **not** marketplace listing ids; `/items/MLA55016525` alone will 404 without fallback.
+Ids from search are **catalog product ids**, not marketplace listing ids.
 
 ```bash
 pnpm install && pnpm build
@@ -150,25 +150,17 @@ Upstream `@dan1d/mercadolibre-mcp@1.0.2` shipped 8 buyer-only tools. This fork s
 
 | Tool | Description |
 |------|-------------|
-| `search_items` | Catalog keyword search (`GET /products/search`). Returns catalog product ids. |
-| `search_buyable_listings` | Composite workaround: catalog → buy box → price filter → optional seller reputation. Use for "listings under $X with seller ratings". |
-| `search_listings` | Tries legacy `GET /sites/{site}/search?q=`; on 403 returns a fallback hint to `search_buyable_listings`. |
-| `search_listings_by_seller` | Listings from one seller (`GET /sites/{site}/search?seller_id=`). |
+| `search_items` | Catalog keyword search (`GET /products/search`). Returns catalog product ids. With `include_web_prices` adds live web prices. |
+| `find_offers_for_product_query` | Product-scoped offers: catalog buy-box + live website-search offers (`price_source` api/web). Use for "what can I buy / sellers and prices for X". |
 | `get_product` | Catalog product datasheet (`GET /products/{id}`). |
-| `get_product_buybox` | Buy box winner listing id and price range for a catalog product. |
-| `get_product_listings` | Competing listings on a catalog PDP (deprecated by ML — prefer buy box). |
-| `compare_products` | Compare 2–5 listings; optional reviews and shipping. |
+| `get_product_buybox` | Buy box winner listing id and price range for a catalog product; web price fallback. |
 
 ### Buyer — item detail
 
 | Tool | Description |
 |------|-------------|
-| `get_item` | Marketplace listing, with auto-fallback to catalog product if id came from search. |
-| `get_items_bulk` | Up to 20 listings in one call (`GET /items?ids=`). |
 | `get_item_description` | Listing description, or catalog `short_description` on fallback. |
-| `get_item_reviews` | Product reviews and `rating_average`. |
-| `get_item_shipping_options` | Shipping options and costs for a listing; optional `zip_code`. |
-| `get_item_sale_terms` | Installments, warranty, `sale_terms`. |
+| `get_item_reviews` | Product reviews and `rating_average`; scraped web-review fallback. |
 
 ### Buyer — categories & domains
 
@@ -184,7 +176,6 @@ Upstream `@dan1d/mercadolibre-mcp@1.0.2` shipped 8 buyer-only tools. This fork s
 | Tool | Description |
 |------|-------------|
 | `get_seller_info` | Seller profile and reputation. |
-| `get_seller_response_time` | Average question response time. |
 | `get_official_store` | Official store metadata. |
 
 ### Buyer — Q&A and trends

@@ -45,14 +45,22 @@ describe("MCP Server", () => {
 
     expect(names).toContain("find_offers_for_product_query");
     expect(names).toContain("rank_sellers_for_query");
+    // Removed: buyer-inaccessible / decommissioned / legacy tools.
     expect(names).not.toContain("search_listings");
-    expect(names).toContain("search_buyable_listings");
-    expect(names).toContain("compare_products");
+    expect(names).not.toContain("search_buyable_listings");
+    expect(names).not.toContain("search_listings_by_seller");
+    expect(names).not.toContain("get_item");
+    expect(names).not.toContain("get_items_bulk");
+    expect(names).not.toContain("compare_products");
+    expect(names).not.toContain("get_product_listings");
+    expect(names).not.toContain("get_item_shipping_options");
+    expect(names).not.toContain("get_item_sale_terms");
+    expect(names).not.toContain("get_seller_response_time");
     expect(names).toContain("get_my_orders");
     expect(names).toContain("seller_get_me");
     expect(names).toContain("seller_get_store_snapshot");
     expect(names).toContain("seller_search_orders");
-    expect(names.length).toBeGreaterThanOrEqual(67);
+    expect(names.length).toBeGreaterThanOrEqual(58);
 
     await client.close();
   });
@@ -65,17 +73,6 @@ describe("MCP Server", () => {
       const result = await client.callTool({ name: "search_items", arguments: { query: "iphone" } });
       const text = (result.content as Array<{ text: string }>)[0].text;
       expect(JSON.parse(text).results).toHaveLength(1);
-      await client.close();
-    });
-
-    it("get_item returns item", async () => {
-      mockFetch.mockResolvedValueOnce(jsonResponse({ id: "MLA123", title: "Test" }));
-      const { client } = await setupMcpClient();
-
-      const result = await client.callTool({ name: "get_item", arguments: { item_id: "MLA123" } });
-      const text = (result.content as Array<{ text: string }>)[0].text;
-      const parsed = JSON.parse(text) as { item: { id: string } };
-      expect(parsed.item.id).toBe("MLA123");
       await client.close();
     });
 
@@ -147,16 +144,6 @@ describe("MCP Server", () => {
       const { client } = await setupMcpClient();
 
       const result = await client.callTool({ name: "search_items", arguments: { query: "test" } });
-      expect(result.isError).toBe(true);
-      await client.close();
-    });
-
-    it("get_item returns error when listing and catalog are missing", async () => {
-      mockFetch.mockResolvedValueOnce(new Response("Not Found", { status: 404 }));
-      mockFetch.mockResolvedValueOnce(new Response("Not Found", { status: 404 }));
-      const { client } = await setupMcpClient();
-
-      const result = await client.callTool({ name: "get_item", arguments: { item_id: "INVALID" } });
       expect(result.isError).toBe(true);
       await client.close();
     });

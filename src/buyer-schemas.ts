@@ -4,20 +4,11 @@ export interface GetProductBuyboxParams {
   site_id?: string;
 }
 
-export interface GetItemsBulkParams {
-  item_ids: string[];
-}
-
 export interface GetItemReviewsParams {
   item_id: string;
   catalog_product_id?: string;
   /** Site id (e.g. MLA) for web-review fallback country. Derived from the id when omitted. */
   site_id?: string;
-}
-
-export interface GetItemShippingOptionsParams {
-  item_id: string;
-  zip_code?: string;
 }
 
 export interface GetCategoryAttributesParams {
@@ -30,25 +21,8 @@ export interface GetDomainDiscoveryParams {
   limit?: number;
 }
 
-export interface SearchListingsBySellerParams {
-  seller_id: number;
-  site_id?: string;
-  limit?: number;
-  offset?: number;
-}
-
 export interface GetOfficialStoreParams {
   store_id: number;
-}
-
-export interface GetProductListingsParams {
-  product_id: string;
-  limit?: number;
-  offset?: number;
-}
-
-export interface GetSellerResponseTimeParams {
-  seller_id: number;
 }
 
 export interface GetItemQuestionsParams {
@@ -64,10 +38,6 @@ export interface AskSellerQuestionParams {
 
 export interface GetQuestionParams {
   question_id: number;
-}
-
-export interface GetItemSaleTermsParams {
-  item_id: string;
 }
 
 export interface GetMeParams {
@@ -118,15 +88,8 @@ export interface GetClaimReturnsParams {
   claim_id: number;
 }
 
-export interface CompareProductsParams {
-  item_ids?: string[];
-  product_ids?: string[];
-  include_reviews?: boolean;
-  include_shipping?: boolean;
-  zip_code?: string;
-}
-
-export interface SearchBuyableListingsParams {
+/** Product-scoped catalog → buy-box offers, with live web price enrichment. */
+export interface FindOffersForProductQueryParams {
   query: string;
   site_id?: string;
   domain_id?: string;
@@ -135,15 +98,12 @@ export interface SearchBuyableListingsParams {
   catalog_limit?: number;
   include_seller_ratings?: boolean;
   /**
-   * Max catalog products with no API buy-box to enrich with a live web price
-   * via the scraper (default SCRAPE_LIMIT env or 3, capped at 5). Set 0 to
-   * disable web price enrichment for this call.
+   * Max web offers returned (sourced from the website search and best-effort
+   * enriched with seller/installments). Default SCRAPE_LIMIT env or 3, capped
+   * at 5. Set 0 to disable web price enrichment for this call.
    */
   scrape_limit?: number;
 }
-
-/** Same shape as search_buyable_listings — product-scoped catalog → buy-box offers. */
-export type FindOffersForProductQueryParams = SearchBuyableListingsParams;
 
 export interface RankSellersForQueryParams {
   query: string;
@@ -169,11 +129,3 @@ export interface RankSellersForQueryParams {
   include_web_offers?: boolean;
 }
 
-export interface SearchListingsParams {
-  query: string;
-  site_id?: string;
-  price_max?: number;
-  price_min?: number;
-  limit?: number;
-  offset?: number;
-}

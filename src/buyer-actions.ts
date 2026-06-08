@@ -24,7 +24,6 @@ import {
 } from "./buyer-seller-ranking.js";
 import type {
   AskSellerQuestionParams,
-  CompareProductsParams,
   FindOffersForProductQueryParams,
   GetCategoryAttributesParams,
   GetClaimParams,
@@ -32,9 +31,6 @@ import type {
   GetDomainDiscoveryParams,
   GetItemQuestionsParams,
   GetItemReviewsParams,
-  GetItemSaleTermsParams,
-  GetItemShippingOptionsParams,
-  GetItemsBulkParams,
   GetMeParams,
   GetMyOrdersParams,
   GetOfficialStoreParams,
@@ -43,14 +39,9 @@ import type {
   GetOrderParams,
   GetOrderShipmentsParams,
   GetProductBuyboxParams,
-  GetProductListingsParams,
   GetQuestionParams,
-  GetSellerResponseTimeParams,
   GetShipmentParams,
   RankSellersForQueryParams,
-  SearchBuyableListingsParams,
-  SearchListingsBySellerParams,
-  SearchListingsParams,
   SearchMyClaimsParams,
 } from "./buyer-schemas.js";
 
@@ -186,28 +177,6 @@ export async function getProductBuybox(
   };
 }
 
-export async function getItemsBulk(
-  client: MercadoLibreClient,
-  params: GetItemsBulkParams
-): Promise<unknown> {
-  const ids = [...new Set(params.item_ids.map((id) => id.trim()).filter(Boolean))];
-  if (ids.length === 0) {
-    throw new Error("item_ids must contain at least one id");
-  }
-  if (ids.length > MULTIGET_MAX) {
-    throw new Error(`item_ids supports at most ${MULTIGET_MAX} ids per call`);
-  }
-  const items = await client.get<MarketplaceItemSummary[]>(
-    "/items",
-    { ids: ids.join(",") }
-  );
-  return {
-    api: "GET /items?ids=",
-    requested: ids.length,
-    items,
-  };
-}
-
 function reviewsLookEmpty(result: unknown): boolean {
   if (!result || typeof result !== "object") return true;
   const r = result as Record<string, unknown>;
@@ -287,20 +256,6 @@ function catalogProductUrl(catalogId: string, siteId: string): string | null {
   return `https://www.mercadolibre.${siteTld(siteId)}/p/${catalogId}`;
 }
 
-export async function getItemShippingOptions(
-  client: MercadoLibreClient,
-  params: GetItemShippingOptionsParams
-): Promise<unknown> {
-  const qp: Record<string, string> = {};
-  if (params.zip_code) {
-    qp.zip_code = params.zip_code;
-  }
-  return client.get(
-    `/items/${encodeURIComponent(params.item_id)}/shipping_options`,
-    Object.keys(qp).length > 0 ? qp : undefined
-  );
-}
-
 export async function getCategoryAttributes(
   client: MercadoLibreClient,
   params: GetCategoryAttributesParams
@@ -323,91 +278,11 @@ export async function getDomainDiscovery(
   );
 }
 
-export async function searchListingsBySeller(
-  client: MercadoLibreClient,
-  params: SearchListingsBySellerParams
-): Promise<unknown> {
-  const limit = Math.min(params.limit ?? 20, 50);
-  const qp: Record<string, string> = {
-    status: "active",
-    limit: String(limit),
-  };
-  if (params.offset !== undefined) {
-    qp.offset = String(params.offset);
-  }
-
-  const itemsSearch = await client.get<{ results?: string[]; paging?: unknown }>(
-    `/users/${encodeURIComponent(String(params.seller_id))}/items/search`,
-    qp
-  );
-  const itemIds = itemsSearch.results ?? [];
-  if (itemIds.length === 0) {
-    return {
-      search_api: "users/items/search",
-      seller_id: params.seller_id,
-      site_id: params.site_id ?? "MLA",
-      item_ids: [],
-      listings: [],
-    };
-  }
-
-  const listings: MarketplaceItemSummary[] = [];
-  for (let offset = 0; offset < itemIds.length; offset += MULTIGET_MAX) {
-    const chunk = itemIds.slice(offset, offset + MULTIGET_MAX);
-    const batch = await client.get<MarketplaceItemSummary[]>("/items", {
-      ids: chunk.join(","),
-    });
-    if (Array.isArray(batch)) {
-      listings.push(...batch);
-    }
-  }
-
-  return {
-    search_api: "users/items/search",
-    seller_id: params.seller_id,
-    site_id: params.site_id ?? "MLA",
-    paging: itemsSearch.paging ?? null,
-    listings,
-  };
-}
-
 export async function getOfficialStore(
   client: MercadoLibreClient,
   params: GetOfficialStoreParams
 ): Promise<unknown> {
   return client.get(`/stores/${encodeURIComponent(String(params.store_id))}`);
-}
-
-export async function getProductListings(
-  client: MercadoLibreClient,
-  params: GetProductListingsParams
-): Promise<unknown> {
-  const qp: Record<string, string> = {
-    limit: String(Math.min(params.limit ?? 20, 50)),
-  };
-  if (params.offset !== undefined) {
-    qp.offset = String(params.offset);
-  }
-  const result = await client.get(
-    `/products/${encodeURIComponent(params.product_id)}/items`,
-    qp
-  );
-  return {
-    api: "GET /products/{id}/items",
-    deprecation_note:
-      "DECOMMISSIONED by Mercado Libre on 2025-10-01 — this endpoint no longer returns competing listings and will be empty. For a catalog price use buy_box_winner (get_product_buybox); for merchant discovery use rank_sellers_for_query.",
-    product_id: params.product_id,
-    result,
-  };
-}
-
-export async function getSellerResponseTime(
-  client: MercadoLibreClient,
-  params: GetSellerResponseTimeParams
-): Promise<unknown> {
-  return client.get(
-    `/users/${encodeURIComponent(String(params.seller_id))}/questions/response_time`
-  );
 }
 
 export async function getItemQuestions(
@@ -445,37 +320,6 @@ export async function getQuestion(
   return client.get(`/questions/${encodeURIComponent(String(params.question_id))}`, {
     api_version: "4",
   });
-}
-
-export async function getItemSaleTerms(
-  client: MercadoLibreClient,
-  params: GetItemSaleTermsParams
-): Promise<unknown> {
-  const item = await client.get<MarketplaceItemSummary>(
-    `/items/${encodeURIComponent(params.item_id)}`
-  );
-  return {
-    item_id: item.id,
-    price: item.price,
-    currency_id: item.currency_id,
-    original_price: item.original_price,
-    sale_terms: item.sale_terms ?? null,
-    installments: item.installments ?? null,
-    warranty: extractWarranty(item.sale_terms),
-  };
-}
-
-function extractWarranty(saleTerms: unknown): unknown {
-  if (!Array.isArray(saleTerms)) {
-    return null;
-  }
-  return saleTerms.find((term) => {
-    if (term && typeof term === "object" && "id" in term) {
-      const id = (term as { id?: string }).id;
-      return id === "WARRANTY_TYPE" || id === "WARRANTY_TIME";
-    }
-    return false;
-  }) ?? null;
 }
 
 export async function getMe(
@@ -586,79 +430,6 @@ export async function getClaimReturns(
   return client.get(
     `/post-purchase/v2/claims/${encodeURIComponent(String(params.claim_id))}/returns`
   );
-}
-
-export async function compareProducts(
-  client: MercadoLibreClient,
-  params: CompareProductsParams
-): Promise<unknown> {
-  const listingIds: string[] = [...(params.item_ids ?? [])];
-
-  if (params.product_ids) {
-    for (const productId of params.product_ids) {
-      const product = await fetchCatalogProduct(client, productId);
-      const itemId = extractBuyBoxItemId(product);
-      if (itemId) {
-        listingIds.push(itemId);
-      }
-    }
-  }
-
-  const uniqueIds = [...new Set(listingIds.map((id) => id.trim()).filter(Boolean))];
-  if (uniqueIds.length < 2) {
-    throw new Error("Provide at least two item_ids or product_ids with buy box winners");
-  }
-  if (uniqueIds.length > 5) {
-    throw new Error("compare_products supports at most 5 listings");
-  }
-
-  const bulk = await getItemsBulk(client, { item_ids: uniqueIds });
-  const bulkItems = (bulk as { items: MarketplaceItemSummary[] }).items;
-
-  const comparisons = [];
-  for (const item of bulkItems) {
-    const entry: Record<string, unknown> = {
-      item_id: item.id,
-      title: item.title,
-      price: item.price,
-      currency_id: item.currency_id,
-      condition: item.condition,
-      seller_id: item.seller_id,
-      permalink: item.permalink,
-      free_shipping: item.shipping?.free_shipping ?? null,
-    };
-
-    if (params.include_reviews) {
-      try {
-        entry.reviews = await getItemReviews(client, {
-          item_id: item.id,
-          catalog_product_id:
-            typeof item.catalog_product_id === "string" ? item.catalog_product_id : undefined,
-        });
-      } catch (error) {
-        entry.reviews_error = error instanceof Error ? error.message : String(error);
-      }
-    }
-
-    if (params.include_shipping) {
-      try {
-        entry.shipping_options = await getItemShippingOptions(client, {
-          item_id: item.id,
-          zip_code: params.zip_code,
-        });
-      } catch (error) {
-        entry.shipping_error = error instanceof Error ? error.message : String(error);
-      }
-    }
-
-    comparisons.push(entry);
-  }
-
-  return {
-    compared_count: comparisons.length,
-    comparisons,
-    note: "Use LLM or skill to rank options; this tool only aggregates API data.",
-  };
 }
 
 export async function findOffersForProductQuery(
@@ -826,22 +597,6 @@ export async function findOffersForProductQuery(
     offers,
     catalog_without_price: stillWithoutPrice,
     skipped,
-  };
-}
-
-export async function searchBuyableListings(
-  client: MercadoLibreClient,
-  params: SearchBuyableListingsParams
-): Promise<unknown> {
-  const result = await findOffersForProductQuery(client, params);
-  const payload = result as Record<string, unknown>;
-  return {
-    ...payload,
-    strategy: "catalog_search_then_buy_box",
-    limitation:
-      "Legacy alias of find_offers_for_product_query. Prefer find_offers_for_product_query for product-scoped offers.",
-    matched_count: payload.offer_count ?? 0,
-    listings: payload.offers ?? [],
   };
 }
 
@@ -1188,30 +943,3 @@ export async function rankSellersForQuery(
   };
 }
 
-export async function searchListings(
-  client: MercadoLibreClient,
-  params: SearchListingsParams
-): Promise<unknown> {
-  void client;
-  return {
-    search_api: "sites/search?q=",
-    deprecated: true,
-    removed: true,
-    blocked: true,
-    status: 403,
-    site_id: params.site_id ?? "MLA",
-    query: params.query,
-    explanation:
-      "GET /sites/{site}/search?q= is not documented as the supported buyer path and returns 403 for this app. Use rank_sellers_for_query instead.",
-    alternative: {
-      tool: "rank_sellers_for_query",
-      arguments: {
-        query: params.query,
-        site_id: params.site_id ?? "MLA",
-        top_sellers: 3,
-        price_min: params.price_min,
-        price_max: params.price_max,
-      },
-    },
-  };
-}

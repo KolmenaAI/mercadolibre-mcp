@@ -14,11 +14,6 @@ export interface SearchItemsParams {
   include_web_prices?: boolean;
 }
 
-export interface GetItemParams {
-  /** Marketplace listing id (MLA…) or catalog product id from search_items — auto-resolves on 404. */
-  item_id: string;
-}
-
 export interface GetProductParams {
   product_id: string;
 }

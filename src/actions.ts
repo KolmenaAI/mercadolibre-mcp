@@ -7,7 +7,6 @@ import {
 import type { ScraperProvider } from "./apify-scraper.js";
 import type {
   SearchItemsParams,
-  GetItemParams,
   GetProductParams,
   GetItemDescriptionParams,
   GetCategoriesParams,
@@ -91,34 +90,6 @@ export async function getProduct(
     api: "GET /products/{id}",
     product,
   };
-}
-
-export async function getItem(
-  client: MercadoLibreClient,
-  params: GetItemParams
-): Promise<unknown> {
-  const id = params.item_id;
-  try {
-    const item = await client.get(`/items/${encodeURIComponent(id)}`);
-    return {
-      resource_type: "marketplace_item",
-      api: "GET /items/{id}",
-      item,
-    };
-  } catch (error) {
-    if (!isItemNotFoundError(error)) {
-      throw error;
-    }
-    const product = await fetchCatalogProduct(client, id);
-    return {
-      resource_type: "catalog_product",
-      api: "GET /products/{id}",
-      resolved_from: "item_id",
-      note:
-        "No marketplace listing for this id; returned catalog product from search_items. Use permalink for buyer URL. For seller price/stock use marketplace item ids when available.",
-      product,
-    };
-  }
 }
 
 export async function getItemDescription(
