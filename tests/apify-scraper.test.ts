@@ -213,6 +213,24 @@ describe("enrichment wiring", () => {
     });
   });
 
+  it("findOffersForProductQuery enriches even when the catalog permalink is empty (rebuilds /p/{id})", async () => {
+    mockFetch
+      .mockResolvedValueOnce(jsonResponse({ results: [{ id: "MLA68039639", name: "Samsung B350E" }] }))
+      .mockResolvedValueOnce(
+        jsonResponse({ id: "MLA68039639", name: "Samsung B350E", buy_box_winner: null, permalink: "" })
+      );
+
+    const result = (await findOffersForProductQuery(
+      client,
+      { query: "samsung b350e" },
+      new FakeScraper({ ...WEB_OFFER, price: 200000 })
+    )) as { offer_count: number; web_enriched_count: number; offers: Array<Record<string, unknown>> };
+
+    expect(result.offer_count).toBe(1);
+    expect(result.web_enriched_count).toBe(1);
+    expect(result.offers[0]).toMatchObject({ price: 200000, price_source: "web" });
+  });
+
   it("findOffersForProductQuery leaves catalog_without_price when scrape_limit is 0", async () => {
     mockFetch
       .mockResolvedValueOnce(jsonResponse({ results: [{ id: "MLA27172667", name: "iPhone" }] }))

@@ -1,5 +1,11 @@
 # Changelog — @kolmena-ai/meli-mcp
 
+## 1.9.1
+
+### Fix: web price enrichment skipped when catalog permalink is empty
+
+The catalog API returns an empty `permalink` for many no-buy-box products (e.g. basic phones), so `find_offers_for_product_query` and `get_product_buybox` skipped web price enrichment entirely and fell back to `catalog_without_price`. They now synthesize the canonical `/p/{catalog_product_id}` URL when the API gives no permalink and scrape that, so prices come through.
+
 ## 1.9.0
 
 ### Web price enrichment via Apify (no agent browser)

@@ -98,9 +98,14 @@ export async function getProductBuybox(
   const buyBoxItemId = extractBuyBoxItemId(product);
 
   let webOffer: Record<string, unknown> | null = null;
-  if (!buyBoxItemId && scraper?.enabled && typeof product.permalink === "string") {
-    const scraped = await scraper.scrapeProduct(product.permalink, {
-      site_id: siteForId(params.site_id, product.id),
+  const buyboxSite = siteForId(params.site_id, product.id);
+  const buyboxUrl =
+    typeof product.permalink === "string" && product.permalink.trim() !== ""
+      ? product.permalink
+      : catalogProductUrl(product.id, buyboxSite);
+  if (!buyBoxItemId && scraper?.enabled && buyboxUrl) {
+    const scraped = await scraper.scrapeProduct(buyboxUrl, {
+      site_id: buyboxSite,
     });
     if (scraped) {
       webOffer = webOfferRow(
@@ -216,6 +221,16 @@ function siteTld(siteId: string): string {
     MEC: "com.ec",
   };
   return map[siteId.toUpperCase()] ?? "com.ar";
+}
+
+/**
+ * Canonical catalog product page URL. The catalog API frequently returns an
+ * empty `permalink` for products with no buy box, so we synthesize the `/p/{id}`
+ * URL — which the scraper resolves — from the catalog product id.
+ */
+function catalogProductUrl(catalogId: string, siteId: string): string | null {
+  if (!/^ML[A-Z]\d/.test(catalogId)) return null;
+  return `https://www.mercadolibre.${siteTld(siteId)}/p/${catalogId}`;
 }
 
 export async function getItemShippingOptions(
@@ -694,14 +709,19 @@ export async function findOffersForProductQuery(
   if (scraper?.enabled && scrapeLimit > 0 && catalogWithoutPrice.length > 0) {
     let budget = scrapeLimit;
     for (const entry of catalogWithoutPrice) {
-      const permalink = typeof entry.permalink === "string" ? entry.permalink : null;
       const catalogProductId = String(entry.catalog_product_id ?? "");
-      if (budget <= 0 || !permalink) {
+      const rawPermalink =
+        typeof entry.permalink === "string" && entry.permalink.trim() !== ""
+          ? entry.permalink
+          : null;
+      // The catalog API often returns an empty permalink; rebuild /p/{id}.
+      const scrapeUrl = rawPermalink ?? catalogProductUrl(catalogProductId, siteId);
+      if (budget <= 0 || !scrapeUrl) {
         stillWithoutPrice.push(entry);
         continue;
       }
       budget -= 1;
-      const scraped = await scraper.scrapeProduct(permalink, { site_id: siteId });
+      const scraped = await scraper.scrapeProduct(scrapeUrl, { site_id: siteId });
       if (!scraped || scraped.price === null) {
         stillWithoutPrice.push(entry);
         continue;
