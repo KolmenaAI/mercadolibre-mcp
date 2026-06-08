@@ -1,5 +1,15 @@
 # Changelog — @kolmena-ai/meli-mcp
 
+## 1.9.3
+
+### Parallel web price scraping (fixes MCP call timeout)
+
+Sequential scraping of no-buy-box catalog products (each browser scrape is 15-30s) exceeded the MCP gateway's tool-call timeout, so `find_offers_for_product_query` timed out instead of returning prices.
+
+- **Scrapes now run in parallel** (`Promise.all`), so wall time ≈ a single scrape regardless of `scrape_limit` (still default 3).
+- **`APIFY_TIMEOUT_MS` default raised 35s → 45s.** Keep it strictly below the MCP gateway (Bifrost) tool-execution timeout — recommended Bifrost = 60s, leaving room for the catalog scan (`catalog ~8-10s + scrape 45s < 60s`). A slow scrape now self-aborts and falls into `catalog_without_price` (served from the 10-min cache next call) rather than killing the whole tool call.
+- `scrapeProduct` accepts an optional per-call `timeoutMs`.
+
 ## 1.9.2
 
 ### Fix: treat a scraped price of 0 as "no price"

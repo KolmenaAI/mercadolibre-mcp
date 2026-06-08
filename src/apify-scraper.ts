@@ -22,7 +22,10 @@
  */
 
 const DEFAULT_ACTOR = "sourabhbgp~mercadolibre-scraper";
-const DEFAULT_TIMEOUT_MS = 35_000;
+// A single browser scrape can take 15-30s (cold start). Default leaves room
+// under a 60s MCP-gateway (Bifrost) timeout: catalog scan (~8-10s) + this < 60s.
+// Tune via APIFY_TIMEOUT_MS; keep it strictly below the Bifrost tool timeout.
+const DEFAULT_TIMEOUT_MS = 45_000;
 const DEFAULT_CACHE_TTL_MS = 600_000;
 const APIFY_BASE = "https://api.apify.com/v2/acts";
 
@@ -112,7 +115,10 @@ export interface ScrapedReview {
 export interface ScraperProvider {
   /** True when an Apify token is configured and enrichment can run. */
   readonly enabled: boolean;
-  scrapeProduct(url: string, opts?: { site_id?: string }): Promise<ScrapedOffer | null>;
+  scrapeProduct(
+    url: string,
+    opts?: { site_id?: string; timeoutMs?: number }
+  ): Promise<ScrapedOffer | null>;
   scrapeSearch(
     query: string,
     opts?: { site_id?: string; limit?: number }
@@ -208,7 +214,11 @@ export class ApifyScraper implements ScraperProvider {
    * Run the actor synchronously and return its dataset items. Never throws:
    * any failure (no token, timeout, non-2xx, malformed body) resolves to [].
    */
-  private async runActor(input: Record<string, unknown>, cacheKey: string): Promise<unknown[]> {
+  private async runActor(
+    input: Record<string, unknown>,
+    cacheKey: string,
+    timeoutMs?: number
+  ): Promise<unknown[]> {
     if (!this.token) return [];
 
     const cached = this.cache.get(cacheKey);
@@ -216,13 +226,14 @@ export class ApifyScraper implements ScraperProvider {
       return cached.value as unknown[];
     }
 
+    const effectiveTimeout = Math.max(2000, Math.min(timeoutMs ?? this.timeoutMs, this.timeoutMs));
     const url = `${APIFY_BASE}/${encodeURIComponent(this.actor)}/run-sync-get-dataset-items?token=${encodeURIComponent(this.token)}`;
     try {
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),
-        signal: AbortSignal.timeout(this.timeoutMs),
+        signal: AbortSignal.timeout(effectiveTimeout),
       });
       if (!res.ok) {
         this.logFailure("apify_http_error", { status: res.status, actor: this.actor });
@@ -286,7 +297,10 @@ export class ApifyScraper implements ScraperProvider {
     };
   }
 
-  async scrapeProduct(url: string, opts?: { site_id?: string }): Promise<ScrapedOffer | null> {
+  async scrapeProduct(
+    url: string,
+    opts?: { site_id?: string; timeoutMs?: number }
+  ): Promise<ScrapedOffer | null> {
     if (!this.enabled) return null;
     const country = siteToCountry(opts?.site_id);
     const rows = await this.runActor(
@@ -299,7 +313,8 @@ export class ApifyScraper implements ScraperProvider {
         includeQuestions: false,
         includeVariations: false,
       },
-      `product:${country}:${url}`
+      `product:${country}:${url}`,
+      opts?.timeoutMs
     );
     const first = rows[0] as ApifyProductRow | undefined;
     if (!first) return null;

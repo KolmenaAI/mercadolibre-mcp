@@ -701,13 +701,15 @@ export async function findOffersForProductQuery(
 
   // Web price enrichment: for catalog products with no API buy-box, recover
   // the live website price via the scraper so the agent gets a price without
-  // driving a browser. Best-effort and bounded by scrape_limit.
+  // driving a browser. Scrapes run in PARALLEL (a single browser scrape is
+  // 15-30s; sequential blew the MCP call timeout) and are bounded by
+  // scrape_limit. The MCP gateway timeout must be >= APIFY_TIMEOUT_MS.
   let webEnrichedCount = 0;
   const scrapeLimit = Math.min(params.scrape_limit ?? DEFAULT_SCRAPE_LIMIT, MAX_SCRAPE_LIMIT);
   const stillWithoutPrice: Array<Record<string, unknown>> = [];
 
-  if (scraper?.enabled && scrapeLimit > 0 && catalogWithoutPrice.length > 0) {
-    let budget = scrapeLimit;
+  const targets: Array<{ entry: Record<string, unknown>; url: string; catalogProductId: string }> = [];
+  if (scraper?.enabled && scrapeLimit > 0) {
     for (const entry of catalogWithoutPrice) {
       const catalogProductId = String(entry.catalog_product_id ?? "");
       const rawPermalink =
@@ -715,32 +717,41 @@ export async function findOffersForProductQuery(
           ? entry.permalink
           : null;
       // The catalog API often returns an empty permalink; rebuild /p/{id}.
-      const scrapeUrl = rawPermalink ?? catalogProductUrl(catalogProductId, siteId);
-      if (budget <= 0 || !scrapeUrl) {
+      const url = rawPermalink ?? catalogProductUrl(catalogProductId, siteId);
+      if (url && targets.length < scrapeLimit) {
+        targets.push({ entry, url, catalogProductId });
+      } else {
+        stillWithoutPrice.push(entry);
+      }
+    }
+  } else {
+    stillWithoutPrice.push(...catalogWithoutPrice);
+  }
+
+  if (targets.length > 0 && scraper) {
+    const scraped = await Promise.all(
+      targets.map((t) => scraper.scrapeProduct(t.url, { site_id: siteId }).catch(() => null))
+    );
+    for (let i = 0; i < targets.length; i += 1) {
+      const { entry, catalogProductId } = targets[i];
+      const offer = scraped[i];
+      if (!offer || offer.price === null) {
         stillWithoutPrice.push(entry);
         continue;
       }
-      budget -= 1;
-      const scraped = await scraper.scrapeProduct(scrapeUrl, { site_id: siteId });
-      if (!scraped || scraped.price === null) {
-        stillWithoutPrice.push(entry);
-        continue;
-      }
-      if (params.price_max !== undefined && scraped.price > params.price_max) continue;
-      if (params.price_min !== undefined && scraped.price < params.price_min) continue;
+      if (params.price_max !== undefined && offer.price > params.price_max) continue;
+      if (params.price_min !== undefined && offer.price < params.price_min) continue;
       offers.push(
         webOfferRow(
           {
             catalog_product_id: catalogProductId,
             catalog_name: typeof entry.catalog_name === "string" ? entry.catalog_name : undefined,
           },
-          scraped
+          offer
         )
       );
       webEnrichedCount += 1;
     }
-  } else {
-    stillWithoutPrice.push(...catalogWithoutPrice);
   }
 
   return {
