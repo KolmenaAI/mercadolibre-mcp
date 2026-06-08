@@ -1,5 +1,21 @@
 # Changelog — @kolmena-ai/meli-mcp
 
+## 1.9.0
+
+### Web price enrichment via Apify (no agent browser)
+
+Mercado Libre's catalog API returns no price for products without an active buy-box winner (iPhone, MacBook, refurbished), and ML blocks plain HTTP scraping. The server now recovers the **live website price** deterministically by calling an Apify Mercado Libre actor (real browser + residential proxies) and merging it into tool responses — so buyer agents no longer need to drive a browser.
+
+- **New module `src/apify-scraper.ts`** — `ScraperProvider` interface + `ApifyScraper` implementation (modes: product, search, seller, reviews). Fails soft (missing token / timeout / non-2xx / empty → no enrichment, never throws), TTL-cached, bounded, and behind a swappable interface. Process-wide singleton via `getScraper()`.
+- **`find_offers_for_product_query`** — no-buy-box catalog matches are priced from the web and promoted into `offers[]`. Every offer now carries **`price_source`** (`"api"` or `"web"`). New `scrape_limit` param (default 3, max 5; 0 disables). Adds `web_enriched_count`.
+- **`get_product_buybox`** — returns `web_offer` (price_source `web`) when there is no API buy-box winner. New optional `site_id`.
+- **`search_items`** — new `include_web_prices` → adds `web_offers[]` with live prices (catalog search otherwise returns price-less ids).
+- **`rank_sellers_for_query`** — adds `web_ranked_sellers[]` (sellers + cheapest live price), reliable even when official seller-inventory endpoints are blocked. New `include_web_offers` (default true when scraper configured).
+- **`get_seller_info`** — new `include_catalog` → adds `web_storefront` (seller's live catalog + reputation). New optional `site_id`.
+- **`get_item_reviews`** — falls back to scraped web reviews (`reviews_source: "web"`) when the official API is empty.
+- **Config** — `APIFY_TOKEN` (enables enrichment; one shared server token, not per-user / not in Bifrost), `APIFY_ML_ACTOR` (default `sourabhbgp~mercadolibre-scraper`), `APIFY_TIMEOUT_MS`, `SCRAPE_LIMIT`, `SCRAPE_CACHE_TTL_MS`.
+- Tests: `tests/apify-scraper.test.ts` covers the adapter (normalize, no-price, non-2xx, throw, cache) and the enrichment branches.
+
 ## 1.8.0
 
 ### Merchant discovery without `/sites/search?q=`

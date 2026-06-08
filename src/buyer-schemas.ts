@@ -1,5 +1,7 @@
 export interface GetProductBuyboxParams {
   product_id: string;
+  /** Site id (e.g. MLA) for web price-enrichment country. Derived from product_id when omitted. */
+  site_id?: string;
 }
 
 export interface GetItemsBulkParams {
@@ -9,6 +11,8 @@ export interface GetItemsBulkParams {
 export interface GetItemReviewsParams {
   item_id: string;
   catalog_product_id?: string;
+  /** Site id (e.g. MLA) for web-review fallback country. Derived from the id when omitted. */
+  site_id?: string;
 }
 
 export interface GetItemShippingOptionsParams {
@@ -130,6 +134,12 @@ export interface SearchBuyableListingsParams {
   price_min?: number;
   catalog_limit?: number;
   include_seller_ratings?: boolean;
+  /**
+   * Max catalog products with no API buy-box to enrich with a live web price
+   * via the scraper (default SCRAPE_LIMIT env or 3, capped at 5). Set 0 to
+   * disable web price enrichment for this call.
+   */
+  scrape_limit?: number;
 }
 
 /** Same shape as search_buyable_listings — product-scoped catalog → buy-box offers. */
@@ -151,6 +161,12 @@ export interface RankSellersForQueryParams {
   /** Max active listings per top seller to inspect (default 50, max 50). */
   listings_per_seller?: number;
   include_seller_ratings?: boolean;
+  /**
+   * Also return web_ranked_sellers built from the scraper's search results
+   * (sellers + live prices) — reliable even when the official seller-inventory
+   * endpoints are blocked. Default true when a scraper token is configured.
+   */
+  include_web_offers?: boolean;
 }
 
 export interface SearchListingsParams {

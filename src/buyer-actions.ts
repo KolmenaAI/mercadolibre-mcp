@@ -6,7 +6,8 @@ import {
   type MarketplaceItemSummary,
 } from "./item-helpers.js";
 import { fetchCatalogProduct, type CatalogProductPayload } from "./product-helpers.js";
-import { searchItems, getSellerInfo } from "./actions.js";
+import { searchItems, getSellerInfo, siteForId } from "./actions.js";
+import type { ScrapedOffer, ScraperProvider } from "./apify-scraper.js";
 import {
   dedupeListingsBySeller,
   extractListingSellerId,
@@ -50,13 +51,65 @@ import type {
 } from "./buyer-schemas.js";
 
 const MULTIGET_MAX = 20;
+const DEFAULT_SCRAPE_LIMIT = Number(process.env.SCRAPE_LIMIT) || 3;
+const MAX_SCRAPE_LIMIT = 5;
+
+/** Build an offer row from a scraped web result so web + API offers share one shape. */
+function webOfferRow(
+  source: { catalog_product_id: string; catalog_name?: string },
+  offer: ScrapedOffer
+): Record<string, unknown> {
+  return {
+    catalog_product_id: source.catalog_product_id,
+    catalog_name: source.catalog_name ?? offer.title,
+    listing_id: null,
+    title: offer.title,
+    price: offer.price,
+    currency_id: offer.currency,
+    condition: offer.condition,
+    available_quantity: offer.available_quantity,
+    sold_quantity: offer.sold_quantity,
+    installments: offer.installments,
+    free_shipping: offer.free_shipping,
+    shipping: offer.shipping,
+    rating: offer.rating,
+    rating_count: offer.rating_count,
+    seller_id: offer.seller_id,
+    seller: offer.seller_name
+      ? {
+          id: offer.seller_id,
+          nickname: offer.seller_name,
+          reputation: offer.seller_reputation,
+          is_official_store: offer.is_official_store,
+        }
+      : null,
+    permalink: offer.url,
+    price_source: "web",
+    scraped_at: offer.scraped_at,
+  };
+}
 
 export async function getProductBuybox(
   client: MercadoLibreClient,
-  params: GetProductBuyboxParams
+  params: GetProductBuyboxParams,
+  scraper?: ScraperProvider
 ): Promise<unknown> {
   const product = await fetchCatalogProduct(client, params.product_id);
   const buyBoxItemId = extractBuyBoxItemId(product);
+
+  let webOffer: Record<string, unknown> | null = null;
+  if (!buyBoxItemId && scraper?.enabled && typeof product.permalink === "string") {
+    const scraped = await scraper.scrapeProduct(product.permalink, {
+      site_id: siteForId(params.site_id, product.id),
+    });
+    if (scraped) {
+      webOffer = webOfferRow(
+        { catalog_product_id: product.id, catalog_name: product.name },
+        scraped
+      );
+    }
+  }
+
   return {
     product_id: product.id,
     name: product.name,
@@ -64,9 +117,13 @@ export async function getProductBuybox(
     buy_box_winner_item_id: buyBoxItemId,
     buy_box_winner_price_range: product.buy_box_winner_price_range ?? null,
     buy_box_winner: product.buy_box_winner ?? null,
+    price_source: buyBoxItemId ? "api" : webOffer ? "web" : null,
+    web_offer: webOffer,
     note: buyBoxItemId
       ? "buy_box_winner already includes price/currency_id/seller_id. Use get_item with buy_box_winner_item_id only if you need more listing detail."
-      : "No buy box winner for this catalog product, so it has no catalog price. Use rank_sellers_for_query for merchant discovery or find_offers_for_product_query for buy-box offers.",
+      : webOffer
+        ? "No API buy box winner; web_offer carries the current website price (price_source: web)."
+        : "No buy box winner for this catalog product, so it has no catalog price. Use rank_sellers_for_query for merchant discovery or find_offers_for_product_query for buy-box offers.",
   };
 }
 
@@ -92,18 +149,73 @@ export async function getItemsBulk(
   };
 }
 
+function reviewsLookEmpty(result: unknown): boolean {
+  if (!result || typeof result !== "object") return true;
+  const r = result as Record<string, unknown>;
+  const reviews = r.reviews;
+  if (Array.isArray(reviews) && reviews.length > 0) return false;
+  const paging = r.paging as { total?: number } | undefined;
+  if (paging && typeof paging.total === "number" && paging.total > 0) return false;
+  return true;
+}
+
 export async function getItemReviews(
   client: MercadoLibreClient,
-  params: GetItemReviewsParams
+  params: GetItemReviewsParams,
+  scraper?: ScraperProvider
 ): Promise<unknown> {
   const qp: Record<string, string> = {};
   if (params.catalog_product_id) {
     qp.catalog_product_id = params.catalog_product_id;
   }
-  return client.get(
-    `/reviews/item/${encodeURIComponent(params.item_id)}`,
-    Object.keys(qp).length > 0 ? qp : undefined
-  );
+
+  let apiResult: unknown = null;
+  let apiError: string | null = null;
+  try {
+    apiResult = await client.get(
+      `/reviews/item/${encodeURIComponent(params.item_id)}`,
+      Object.keys(qp).length > 0 ? qp : undefined
+    );
+  } catch (error) {
+    apiError = error instanceof Error ? error.message : String(error);
+  }
+
+  // Fall back to scraped web reviews only when the official API gave nothing.
+  const catalogId = params.catalog_product_id ?? params.item_id;
+  if (scraper?.enabled && (apiError || reviewsLookEmpty(apiResult)) && /^ML[A-Z]\d/.test(catalogId)) {
+    const siteId = siteForId(params.site_id, catalogId);
+    const url = `https://www.mercadolibre.com.${siteTld(siteId)}/p/${catalogId}`;
+    const webReviews = await scraper.scrapeReviews(url, { site_id: siteId });
+    if (webReviews.length > 0) {
+      return {
+        reviews_source: "web",
+        note: "Official reviews API returned nothing; these reviews were scraped from the product page.",
+        catalog_product_id: catalogId,
+        reviews: webReviews,
+      };
+    }
+  }
+
+  if (apiError && apiResult === null) {
+    throw new Error(apiError);
+  }
+  return apiResult;
+}
+
+/** Mercado Libre web TLD for a site id (used to build catalog page URLs). */
+function siteTld(siteId: string): string {
+  const map: Record<string, string> = {
+    MLA: "com.ar",
+    MLB: "com.br",
+    MLM: "com.mx",
+    MLC: "cl",
+    MCO: "com.co",
+    MPE: "com.pe",
+    MLU: "com.uy",
+    MLV: "com.ve",
+    MEC: "com.ec",
+  };
+  return map[siteId.toUpperCase()] ?? "com.ar";
 }
 
 export async function getItemShippingOptions(
@@ -482,7 +594,8 @@ export async function compareProducts(
 
 export async function findOffersForProductQuery(
   client: MercadoLibreClient,
-  params: FindOffersForProductQueryParams
+  params: FindOffersForProductQueryParams,
+  scraper?: ScraperProvider
 ): Promise<unknown> {
   const siteId = params.site_id ?? "MLA";
   const catalogLimit = Math.min(params.catalog_limit ?? 15, 30);
@@ -549,6 +662,7 @@ export async function findOffersForProductQuery(
       seller_id: item.seller_id,
       permalink: item.permalink,
       free_shipping: item.shipping?.free_shipping ?? null,
+      price_source: "api",
     };
 
     if (params.include_seller_ratings !== false && typeof item.seller_id === "number") {
@@ -570,21 +684,61 @@ export async function findOffersForProductQuery(
     offers.push(row);
   }
 
+  // Web price enrichment: for catalog products with no API buy-box, recover
+  // the live website price via the scraper so the agent gets a price without
+  // driving a browser. Best-effort and bounded by scrape_limit.
+  let webEnrichedCount = 0;
+  const scrapeLimit = Math.min(params.scrape_limit ?? DEFAULT_SCRAPE_LIMIT, MAX_SCRAPE_LIMIT);
+  const stillWithoutPrice: Array<Record<string, unknown>> = [];
+
+  if (scraper?.enabled && scrapeLimit > 0 && catalogWithoutPrice.length > 0) {
+    let budget = scrapeLimit;
+    for (const entry of catalogWithoutPrice) {
+      const permalink = typeof entry.permalink === "string" ? entry.permalink : null;
+      const catalogProductId = String(entry.catalog_product_id ?? "");
+      if (budget <= 0 || !permalink) {
+        stillWithoutPrice.push(entry);
+        continue;
+      }
+      budget -= 1;
+      const scraped = await scraper.scrapeProduct(permalink, { site_id: siteId });
+      if (!scraped || scraped.price === null) {
+        stillWithoutPrice.push(entry);
+        continue;
+      }
+      if (params.price_max !== undefined && scraped.price > params.price_max) continue;
+      if (params.price_min !== undefined && scraped.price < params.price_min) continue;
+      offers.push(
+        webOfferRow(
+          {
+            catalog_product_id: catalogProductId,
+            catalog_name: typeof entry.catalog_name === "string" ? entry.catalog_name : undefined,
+          },
+          scraped
+        )
+      );
+      webEnrichedCount += 1;
+    }
+  } else {
+    stillWithoutPrice.push(...catalogWithoutPrice);
+  }
+
   return {
     strategy: "product_query_catalog_then_buy_box",
     intent:
       "Offers for the product the user asked to buy — resolved via catalog keyword search, not category-wide bestseller lists.",
     limitation:
-      "Only catalog products with an active buy-box winner return price + seller. Products in catalog_without_price have specs/permalinks but no API price until ML assigns a buy box.",
+      "Catalog products with an active buy-box winner return an API price + seller (price_source: api). Products with no buy box are enriched with the live website price (price_source: web) when a scraper is configured; the rest stay in catalog_without_price.",
     site_id: siteId,
     query: params.query,
     price_min: params.price_min ?? null,
     price_max: params.price_max ?? null,
     offer_count: offers.length,
-    catalog_without_price_count: catalogWithoutPrice.length,
+    web_enriched_count: webEnrichedCount,
+    catalog_without_price_count: stillWithoutPrice.length,
     skipped_count: skipped.length,
     offers,
-    catalog_without_price: catalogWithoutPrice,
+    catalog_without_price: stillWithoutPrice,
     skipped,
   };
 }
@@ -739,7 +893,8 @@ async function fetchSellerInventoryMatchingQuery(
 
 export async function rankSellersForQuery(
   client: MercadoLibreClient,
-  params: RankSellersForQueryParams
+  params: RankSellersForQueryParams,
+  scraper?: ScraperProvider
 ): Promise<unknown> {
   const siteId = params.site_id ?? "MLA";
   const topSellers = Math.min(params.top_sellers ?? 3, 10);
@@ -868,10 +1023,55 @@ export async function rankSellersForQuery(
     });
   }
 
+  // Web-backed ranking: reliable even when the official seller-inventory
+  // endpoints are blocked. Group scraped search offers by seller, keep the
+  // cheapest per seller, and rank by price.
+  let webRankedSellers: Array<Record<string, unknown>> = [];
+  if (scraper?.enabled && params.include_web_offers !== false) {
+    const webResults = await scraper.scrapeSearch(params.query, {
+      site_id: siteId,
+      limit: categoryLimit,
+    });
+    const bySeller = new Map<string, Record<string, unknown>>();
+    for (const r of webResults) {
+      if (r.price === null) continue;
+      const name = r.seller_name ?? "(unknown)";
+      const current = bySeller.get(name);
+      const listing = {
+        title: r.title,
+        price: r.price,
+        currency_id: r.currency,
+        condition: r.condition,
+        free_shipping: r.free_shipping,
+        rating: r.rating,
+        permalink: r.url,
+      };
+      if (!current) {
+        bySeller.set(name, {
+          seller_name: name,
+          best_price: r.price,
+          listing_count: 1,
+          cheapest_listing: listing,
+          price_source: "web",
+        });
+      } else {
+        current.listing_count = (current.listing_count as number) + 1;
+        if (r.price < (current.best_price as number)) {
+          current.best_price = r.price;
+          current.cheapest_listing = listing;
+        }
+      }
+    }
+    webRankedSellers = [...bySeller.values()]
+      .sort((a, b) => (a.best_price as number) - (b.best_price as number))
+      .slice(0, topSellers);
+  }
+
   return {
     strategy: "domain_catalog_category_sellers",
     intent:
       "Top merchants for a product query via catalog domain discovery, buy-box/category seller discovery, reputation ranking, then each seller's active inventory filtered by query.",
+    web_ranked_sellers: webRankedSellers,
     apis_used: [
       "GET /sites/{site}/domain_discovery/search",
       "GET /products/search",

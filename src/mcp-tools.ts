@@ -168,7 +168,7 @@ export function registerMercadoLibreTools(server: McpServer, tools: Tools): void
   wrapToolWithRequestTokenContext(server);
   server.tool(
     "search_items",
-    "Search MercadoLibre CATALOG products by keyword (GET /products/search). Returns catalog product ids (e.g. MLA26385767) which have NO price and are NOT listing/item ids. For merchants+prices use rank_sellers_for_query; for buy-box offers use find_offers_for_product_query. Never pass catalog ids to get_item/get_items_bulk.",
+    "Search MercadoLibre CATALOG products by keyword (GET /products/search). Returns catalog product ids (e.g. MLA26385767) which have NO price and are NOT listing/item ids. Set include_web_prices:true to also get a web_offers[] array with live scraped prices (price_source: web). For buy-box offers use find_offers_for_product_query. Never pass catalog ids to get_item/get_items_bulk.",
     {
       query: z.string(),
       site_id: z.string().optional(),
@@ -177,13 +177,17 @@ export function registerMercadoLibreTools(server: McpServer, tools: Tools): void
       price_max: z.number().optional(),
       limit: z.number().optional(),
       offset: z.number().optional(),
+      include_web_prices: z
+        .boolean()
+        .optional()
+        .describe("Also return web_offers[] with live scraped prices (price_source: web)."),
     },
     async (params, extra) => toolResult(() => tools.search_items(params), extra)()
   );
 
   server.tool(
     "find_offers_for_product_query",
-    "PRIMARY product-scoped offer tool when the user asks to buy a specific product (e.g. MacBook Air). Chain: GET /products/search?q= → GET /products/{id} buy box → GET /items/{listing_id}. Returns offers with price+seller when buy_box_winner exists, plus catalog_without_price (permalink, no price) when it does not. NOT category-wide /highlights bestsellers.",
+    "PRIMARY product-scoped offer tool when the user asks to buy a specific product (e.g. iPhone 15, MacBook Air). Chain: GET /products/search?q= → GET /products/{id} buy box → GET /items/{listing_id}. Returns offers[] with price+seller; each offer carries price_source ('api' from the buy box, 'web' from live scraping). Products with neither still appear in catalog_without_price (permalink, no price). NOT category-wide /highlights bestsellers.",
     {
       query: z.string(),
       site_id: z.string().optional(),
@@ -192,13 +196,19 @@ export function registerMercadoLibreTools(server: McpServer, tools: Tools): void
       price_min: z.number().optional(),
       catalog_limit: z.number().optional().describe("Max catalog products to scan (default 15)"),
       include_seller_ratings: z.boolean().optional(),
+      scrape_limit: z
+        .number()
+        .optional()
+        .describe(
+          "Max no-buy-box catalog products to enrich with a live web price (default 3, max 5; 0 disables web enrichment)."
+        ),
     },
     async (params, extra) => toolResult(() => tools.find_offers_for_product_query(params), extra)()
   );
 
   server.tool(
     "rank_sellers_for_query",
-    "PRIMARY merchant-ranking tool (e.g. '3 best sellers for MacBook Air with prices'). Flow: domain_discovery → products/search in domain → buy-box + category sellers → reputation rank → each seller's active inventory via GET /users/{id}/items/search. Does NOT use deprecated GET /sites/search?q=.",
+    "PRIMARY merchant-ranking tool (e.g. '3 best sellers for MacBook Air with prices'). Returns web_ranked_sellers[] built from live scraped search offers (seller + cheapest price, price_source: web) which works even when official seller-inventory endpoints are blocked, plus the API path (domain_discovery → products/search → buy-box/category sellers → reputation rank → GET /users/{id}/items/search). Does NOT use deprecated GET /sites/search?q=.",
     {
       query: z.string(),
       site_id: z.string().optional(),
@@ -210,6 +220,10 @@ export function registerMercadoLibreTools(server: McpServer, tools: Tools): void
       top_sellers: z.number().optional().describe("How many sellers to return (default 3)"),
       listings_per_seller: z.number().optional().describe("Active listings per top seller to inspect (default 50)"),
       include_seller_ratings: z.boolean().optional(),
+      include_web_offers: z
+        .boolean()
+        .optional()
+        .describe("Include web_ranked_sellers[] from live scraped prices (default true when scraper configured)."),
     },
     async (params, extra) => toolResult(() => tools.rank_sellers_for_query(params), extra)()
   );
@@ -250,8 +264,14 @@ export function registerMercadoLibreTools(server: McpServer, tools: Tools): void
 
   server.tool(
     "get_product_buybox",
-    "Catalog buy-box winner for a product. buy_box_winner (when present) already contains price/currency_id/seller_id. Returns null winner for products with no active catalog competition — then use rank_sellers_for_query for merchant discovery.",
-    { product_id: z.string() },
+    "Catalog buy-box winner for a product. buy_box_winner (when present) already contains price/currency_id/seller_id (price_source: api). When there is no winner, web_offer carries the live website price (price_source: web) if a scraper is configured.",
+    {
+      product_id: z.string(),
+      site_id: z
+        .string()
+        .optional()
+        .describe("Site id for web-price country (e.g. MLA). Derived from product_id when omitted."),
+    },
     async (params) => toolResult(() => tools.get_product_buybox(params))()
   );
 
@@ -302,10 +322,14 @@ export function registerMercadoLibreTools(server: McpServer, tools: Tools): void
 
   server.tool(
     "get_item_reviews",
-    "Product reviews and rating_average (GET /reviews/item/{id}).",
+    "Product reviews and rating_average (GET /reviews/item/{id}). Falls back to scraped web reviews (reviews_source: web) when the official API returns nothing and a catalog id + scraper are available.",
     {
       item_id: z.string(),
       catalog_product_id: z.string().optional(),
+      site_id: z
+        .string()
+        .optional()
+        .describe("Site id for the web-review fallback country (e.g. MLA). Derived from the id when omitted."),
     },
     async (params) => toolResult(() => tools.get_item_reviews(params))()
   );
@@ -361,8 +385,15 @@ export function registerMercadoLibreTools(server: McpServer, tools: Tools): void
 
   server.tool(
     "get_seller_info",
-    "Seller profile and reputation.",
-    { seller_id: z.number() },
+    "Seller profile and reputation. Set include_catalog:true to also scrape the seller storefront (web_storefront with live catalog + reputation).",
+    {
+      seller_id: z.number(),
+      site_id: z.string().optional().describe("Site id for the storefront scrape country (default MLA)."),
+      include_catalog: z
+        .boolean()
+        .optional()
+        .describe("Also return web_storefront with the seller's live catalog (price_source: web)."),
+    },
     async (params) => toolResult(() => tools.get_seller_info(params))()
   );
 

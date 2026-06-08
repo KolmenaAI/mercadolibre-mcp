@@ -13,6 +13,39 @@ MCP server that connects AI agents to [MercadoLibre](https://www.mercadolibre.co
 
 **Kolmena docs:** [TESTING.md](./TESTING.md) · [BUYER-API-ROADMAP.md](./BUYER-API-ROADMAP.md) · [HANDOFF.md](./HANDOFF.md) · [CHANGELOG.md](./CHANGELOG.md)
 
+> **v1.9.0 — Web price enrichment.** When Mercado Libre's catalog API exposes no buy-box price (common for iPhone / MacBook / refurbished), the server now recovers the **current website price** via an Apify scraper and returns it inline, tagged `price_source: "web"`. Buyer agents no longer need a browser. See [Web price enrichment](#web-price-enrichment-apify).
+
+---
+
+## Web price enrichment (Apify)
+
+Mercado Libre's catalog API returns **no price** for products without an active buy-box winner, and ML blocks plain HTTP scraping. To recover the live price deterministically — server-side, with no agent-driven browser — the MCP server calls an [Apify](https://apify.com) Mercado Libre actor (a real browser behind residential proxies) and merges the result into the tool response.
+
+**What gets enriched (only when `APIFY_TOKEN` is set):**
+
+| Tool | Enrichment |
+|------|------------|
+| `find_offers_for_product_query` | No-buy-box catalog matches are priced from the web and promoted into `offers[]` with `price_source: "web"` (bounded by `SCRAPE_LIMIT`). |
+| `get_product_buybox` | Returns `web_offer` (live price + seller + installments + shipping) when there is no API buy-box winner. |
+| `search_items` | With `include_web_prices: true`, adds `web_offers[]` (catalog search returns price-less ids otherwise). |
+| `rank_sellers_for_query` | Adds `web_ranked_sellers[]` — sellers + cheapest live price — reliable even when official seller-inventory endpoints are blocked. |
+| `get_seller_info` | With `include_catalog: true`, adds `web_storefront` (seller's live catalog + reputation). |
+| `get_item_reviews` | Falls back to scraped web reviews (`reviews_source: "web"`) when the official reviews API is empty. |
+
+**Design notes:**
+
+- **One shared token.** `APIFY_TOKEN` is a process-wide server secret read once from the environment — it serves every agent/user. It is **not** part of the per-user Mercado Libre OAuth (which still flows in as `Authorization: Bearer`) and must not be configured in Bifrost or per-agent settings.
+- **Fail-soft.** Missing token, timeout, HTTP error, or empty dataset all degrade silently to "no enrichment" — a scrape failure never breaks a tool call.
+- **Bounded + cached.** Each call scrapes at most `SCRAPE_LIMIT` products; results are TTL-cached (`SCRAPE_CACHE_TTL_MS`) to control cost (~$0.005 / scraped product) and latency.
+- **Swappable.** The provider lives behind a `ScraperProvider` interface in [`src/apify-scraper.ts`](./src/apify-scraper.ts); switching backends touches one file.
+
+```bash
+export APIFY_TOKEN='apify_api_...'
+# optional overrides:
+export APIFY_ML_ACTOR='sourabhbgp~mercadolibre-scraper'
+export SCRAPE_LIMIT=3
+```
+
 ---
 
 ## Kolmena buyer workflow
@@ -412,6 +445,11 @@ Transport is selected by a single CLI flag: `--transport stdio|http`. The Docker
 | `PORT` | `8000` | HTTP listen port. |
 | `MERCADOLIBRE_ACCESS_TOKEN` | _(unset)_ | Fallback token used when no inbound `Authorization: Bearer` is present. |
 | `MELI_AUTH_TRACE` | _(unset)_ | Set to `1` to emit redacted token-source traces for verifying per-user OAuth wiring. |
+| `APIFY_TOKEN` | _(unset)_ | **Enables web price enrichment.** Shared Apify API token (see [Web price enrichment](#web-price-enrichment-apify)). One token serves all agents; not per-user. |
+| `APIFY_ML_ACTOR` | `sourabhbgp~mercadolibre-scraper` | Apify actor id used for product/search/seller/reviews scraping. |
+| `APIFY_TIMEOUT_MS` | `35000` | Per-scrape timeout. Failures degrade silently to no enrichment. |
+| `SCRAPE_LIMIT` | `3` | Max no-buy-box catalog products enriched per `find_offers_for_product_query` call (capped at 5). |
+| `SCRAPE_CACHE_TTL_MS` | `600000` | In-memory TTL cache for scrape results (10 min). |
 
 ---
 

@@ -1,4 +1,5 @@
 import { MercadoLibreClient } from "./client.js";
+import { getScraper } from "./apify-scraper.js";
 import {
   searchItems,
   getProduct,
@@ -170,21 +171,23 @@ import type {
 
 export function createMercadoLibreTools(accessToken?: string) {
   const client = new MercadoLibreClient(accessToken);
+  const scraper = getScraper();
 
   return {
     tools: {
-      search_items: (params: SearchItemsParams) => searchItems(client, params),
+      search_items: (params: SearchItemsParams) => searchItems(client, params, scraper),
       find_offers_for_product_query: (params: FindOffersForProductQueryParams) =>
-        findOffersForProductQuery(client, params),
+        findOffersForProductQuery(client, params, scraper),
       rank_sellers_for_query: (params: RankSellersForQueryParams) =>
-        rankSellersForQuery(client, params),
+        rankSellersForQuery(client, params, scraper),
       search_buyable_listings: (params: SearchBuyableListingsParams) =>
         searchBuyableListings(client, params),
       search_listings: (params: SearchListingsParams) => searchListings(client, params),
       search_listings_by_seller: (params: SearchListingsBySellerParams) =>
         searchListingsBySeller(client, params),
       get_product: (params: GetProductParams) => getProduct(client, params),
-      get_product_buybox: (params: GetProductBuyboxParams) => getProductBuybox(client, params),
+      get_product_buybox: (params: GetProductBuyboxParams) =>
+        getProductBuybox(client, params, scraper),
       get_product_listings: (params: GetProductListingsParams) =>
         getProductListings(client, params),
       get_item: (params: GetItemParams) => getItem(client, params),
@@ -192,7 +195,8 @@ export function createMercadoLibreTools(accessToken?: string) {
       compare_products: (params: CompareProductsParams) => compareProducts(client, params),
       get_item_description: (params: GetItemDescriptionParams) =>
         getItemDescription(client, params),
-      get_item_reviews: (params: GetItemReviewsParams) => getItemReviews(client, params),
+      get_item_reviews: (params: GetItemReviewsParams) =>
+        getItemReviews(client, params, scraper),
       get_item_shipping_options: (params: GetItemShippingOptionsParams) =>
         getItemShippingOptions(client, params),
       get_item_sale_terms: (params: GetItemSaleTermsParams) => getItemSaleTerms(client, params),
@@ -202,7 +206,8 @@ export function createMercadoLibreTools(accessToken?: string) {
         getCategoryAttributes(client, params),
       get_domain_discovery: (params: GetDomainDiscoveryParams) =>
         getDomainDiscovery(client, params),
-      get_seller_info: (params: GetSellerInfoParams) => getSellerInfo(client, params),
+      get_seller_info: (params: GetSellerInfoParams) =>
+        getSellerInfo(client, params, scraper),
       get_seller_response_time: (params: GetSellerResponseTimeParams) =>
         getSellerResponseTime(client, params),
       get_official_store: (params: GetOfficialStoreParams) => getOfficialStore(client, params),
