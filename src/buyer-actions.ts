@@ -7,7 +7,11 @@ import {
 } from "./item-helpers.js";
 import { fetchCatalogProduct, type CatalogProductPayload } from "./product-helpers.js";
 import { searchItems, getSellerInfo, siteForId } from "./actions.js";
-import type { ScrapedOffer, ScraperProvider } from "./apify-scraper.js";
+import type {
+  ScrapedOffer,
+  ScrapedSearchResult,
+  ScraperProvider,
+} from "./apify-scraper.js";
 import {
   dedupeListingsBySeller,
   extractListingSellerId,
@@ -53,6 +57,13 @@ import type {
 const MULTIGET_MAX = 20;
 const DEFAULT_SCRAPE_LIMIT = Number(process.env.SCRAPE_LIMIT) || 3;
 const MAX_SCRAPE_LIMIT = 5;
+/**
+ * Per-call timeout for the best-effort product-mode scrape that recovers the
+ * seller/installments for a web search hit. Kept well under the MCP gateway
+ * timeout so a slow product page degrades to the search row's price+link
+ * instead of failing the whole tool call.
+ */
+const WEB_DETAIL_TIMEOUT_MS = Number(process.env.WEB_DETAIL_TIMEOUT_MS) || 20000;
 
 /** Build an offer row from a scraped web result so web + API offers share one shape. */
 function webOfferRow(
@@ -86,6 +97,49 @@ function webOfferRow(
     permalink: offer.url,
     price_source: "web",
     scraped_at: offer.scraped_at,
+  };
+}
+
+/**
+ * Build an offer row from a website search hit, optionally merged with a
+ * product-page detail scrape. Search mode reliably returns the right product +
+ * price + link but no seller/installments, so when the (best-effort) product
+ * detail is present we layer in seller, installments, condition and shipping;
+ * otherwise we keep the search hit's price + link so the user can still click
+ * through and buy.
+ */
+function webOfferFromSearch(
+  hit: ScrapedSearchResult,
+  detail: ScrapedOffer | null
+): Record<string, unknown> {
+  const seller = detail?.seller_name
+    ? {
+        id: detail.seller_id,
+        nickname: detail.seller_name,
+        reputation: detail.seller_reputation,
+        is_official_store: detail.is_official_store,
+      }
+    : null;
+  return {
+    catalog_product_id: hit.catalog_product_id,
+    catalog_name: hit.title,
+    listing_id: null,
+    title: detail?.title ?? hit.title,
+    price: detail?.price ?? hit.price,
+    currency_id: detail?.currency ?? hit.currency,
+    condition: detail?.condition ?? hit.condition,
+    available_quantity: detail?.available_quantity ?? null,
+    sold_quantity: detail?.sold_quantity ?? null,
+    installments: detail?.installments ?? null,
+    free_shipping: detail?.free_shipping ?? hit.free_shipping,
+    shipping: detail?.shipping ?? null,
+    rating: detail?.rating ?? hit.rating,
+    rating_count: detail?.rating_count ?? null,
+    seller_id: detail?.seller_id ?? null,
+    seller,
+    permalink: hit.url ?? detail?.url ?? null,
+    price_source: "web",
+    scraped_at: detail?.scraped_at ?? null,
   };
 }
 
@@ -699,67 +753,68 @@ export async function findOffersForProductQuery(
     offers.push(row);
   }
 
-  // Web price enrichment: for catalog products with no API buy-box, recover
-  // the live website price via the scraper so the agent gets a price without
-  // driving a browser. Scrapes run in PARALLEL (a single browser scrape is
-  // 15-30s; sequential blew the MCP call timeout) and are bounded by
-  // scrape_limit. The MCP gateway timeout must be >= APIFY_TIMEOUT_MS.
+  // Web offer enrichment. The catalog API (/products/search) often matches the
+  // wrong or older models for niche/new products (e.g. it returns MacBook Pro
+  // 14 / Air M2 for "MacBook Air M4"), and per-/p-page scraping of those wrong
+  // matches then finds no price and times out. The website search ranks the
+  // RIGHT listings, so we use a SINGLE search-mode scrape as the primary source
+  // of web offers, then best-effort enrich the top few with a product-mode
+  // scrape to recover seller/installments. Search mode is one fast run (~10s)
+  // vs N parallel /p scrapes, and a slow product detail degrades to the search
+  // hit's price+link instead of failing the call.
   let webEnrichedCount = 0;
   const scrapeLimit = Math.min(params.scrape_limit ?? DEFAULT_SCRAPE_LIMIT, MAX_SCRAPE_LIMIT);
-  const stillWithoutPrice: Array<Record<string, unknown>> = [];
+  const wantWeb =
+    !!scraper?.enabled &&
+    scrapeLimit > 0 &&
+    (offers.length === 0 || catalogWithoutPrice.length > 0);
 
-  const targets: Array<{ entry: Record<string, unknown>; url: string; catalogProductId: string }> = [];
-  if (scraper?.enabled && scrapeLimit > 0) {
-    for (const entry of catalogWithoutPrice) {
-      const catalogProductId = String(entry.catalog_product_id ?? "");
-      const rawPermalink =
-        typeof entry.permalink === "string" && entry.permalink.trim() !== ""
-          ? entry.permalink
-          : null;
-      // The catalog API often returns an empty permalink; rebuild /p/{id}.
-      const url = rawPermalink ?? catalogProductUrl(catalogProductId, siteId);
-      if (url && targets.length < scrapeLimit) {
-        targets.push({ entry, url, catalogProductId });
-      } else {
-        stillWithoutPrice.push(entry);
-      }
-    }
-  } else {
-    stillWithoutPrice.push(...catalogWithoutPrice);
-  }
+  if (wantWeb && scraper) {
+    const tokens = tokenizeProductQuery(params.query);
+    const hits = await scraper
+      .scrapeSearch(params.query, { site_id: siteId, limit: Math.max(scrapeLimit * 3, 10) })
+      .catch(() => [] as ScrapedSearchResult[]);
 
-  if (targets.length > 0 && scraper) {
-    const scraped = await Promise.all(
-      targets.map((t) => scraper.scrapeProduct(t.url, { site_id: siteId }).catch(() => null))
+    const inBudget = (price: number | null): boolean =>
+      price !== null &&
+      price > 0 &&
+      (params.price_max === undefined || price <= params.price_max) &&
+      (params.price_min === undefined || price >= params.price_min);
+
+    const relevant = hits.filter((r) => r.title && titleMatchesProductQuery(r.title, tokens));
+    const ranked = (relevant.length > 0 ? relevant : hits)
+      .filter((r) => r.url && inBudget(r.price))
+      .slice(0, scrapeLimit);
+
+    // Best-effort seller/installments via product-mode (bounded timeout so a
+    // slow page degrades to the search hit's price+link instead of failing).
+    const details = await Promise.all(
+      ranked.map((r) =>
+        r.url
+          ? scraper
+              .scrapeProduct(r.url, { site_id: siteId, timeoutMs: WEB_DETAIL_TIMEOUT_MS })
+              .catch(() => null)
+          : Promise.resolve(null)
+      )
     );
-    for (let i = 0; i < targets.length; i += 1) {
-      const { entry, catalogProductId } = targets[i];
-      const offer = scraped[i];
-      if (!offer || offer.price === null) {
-        stillWithoutPrice.push(entry);
-        continue;
-      }
-      if (params.price_max !== undefined && offer.price > params.price_max) continue;
-      if (params.price_min !== undefined && offer.price < params.price_min) continue;
-      offers.push(
-        webOfferRow(
-          {
-            catalog_product_id: catalogProductId,
-            catalog_name: typeof entry.catalog_name === "string" ? entry.catalog_name : undefined,
-          },
-          offer
-        )
-      );
+
+    for (let i = 0; i < ranked.length; i += 1) {
+      offers.push(webOfferFromSearch(ranked[i], details[i]));
       webEnrichedCount += 1;
     }
   }
+
+  // When the web search produced offers we resolved the buy intent, so we don't
+  // also surface the API-priceless catalog entries (which would read as "no
+  // price" and confuse the agent). Only report them when we found nothing.
+  const stillWithoutPrice = webEnrichedCount > 0 ? [] : catalogWithoutPrice;
 
   return {
     strategy: "product_query_catalog_then_buy_box",
     intent:
       "Offers for the product the user asked to buy — resolved via catalog keyword search, not category-wide bestseller lists.",
     limitation:
-      "Catalog products with an active buy-box winner return an API price + seller (price_source: api). Products with no buy box are enriched with the live website price (price_source: web) when a scraper is configured; the rest stay in catalog_without_price.",
+      "Catalog products with an active buy-box winner return an API price + seller (price_source: api). When the catalog API exposes no price, offers are sourced from the live website search (price_source: web): each carries a price + permalink, and the top results are best-effort enriched with seller/installments. Render every offer (api + web) for the user.",
     site_id: siteId,
     query: params.query,
     price_min: params.price_min ?? null,

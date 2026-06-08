@@ -13,7 +13,7 @@ MCP server that connects AI agents to [MercadoLibre](https://www.mercadolibre.co
 
 **Kolmena docs:** [TESTING.md](./TESTING.md) · [BUYER-API-ROADMAP.md](./BUYER-API-ROADMAP.md) · [HANDOFF.md](./HANDOFF.md) · [CHANGELOG.md](./CHANGELOG.md)
 
-> **v1.9.0 — Web price enrichment.** When Mercado Libre's catalog API exposes no buy-box price (common for iPhone / MacBook / refurbished), the server now recovers the **current website price** via an Apify scraper and returns it inline, tagged `price_source: "web"`. Buyer agents no longer need a browser. See [Web price enrichment](#web-price-enrichment-apify).
+> **v1.9.4 — Web offers from website search.** When Mercado Libre's catalog API exposes no buy-box price (common for iPhone / MacBook / refurbished — and especially niche or just-released models), the server now recovers offers from the **website search** (the same ranking a shopper sees) instead of scraping the catalog API's product matches, then best-effort enriches the top hits with seller/installments. This fixes new models like "MacBook Air M4" where the catalog API returned the wrong/older variants. Offers are tagged `price_source: "web"` with a clickable `permalink`. Buyer agents no longer need a browser. See [Web price enrichment](#web-price-enrichment-apify).
 
 ---
 
@@ -25,7 +25,7 @@ Mercado Libre's catalog API returns **no price** for products without an active 
 
 | Tool | Enrichment |
 |------|------------|
-| `find_offers_for_product_query` | No-buy-box catalog matches are priced from the web and promoted into `offers[]` with `price_source: "web"` (bounded by `SCRAPE_LIMIT`). |
+| `find_offers_for_product_query` | When the catalog API exposes no price, offers are sourced from the live **website search** (right products for niche/new models) and promoted into `offers[]` with `price_source: "web"` + clickable `permalink`. Top hits are best-effort enriched with seller/installments; a slow product page degrades to price+link. Bounded by `SCRAPE_LIMIT`. |
 | `get_product_buybox` | Returns `web_offer` (live price + seller + installments + shipping) when there is no API buy-box winner. |
 | `search_items` | With `include_web_prices: true`, adds `web_offers[]` (catalog search returns price-less ids otherwise). |
 | `rank_sellers_for_query` | Adds `web_ranked_sellers[]` — sellers + cheapest live price — reliable even when official seller-inventory endpoints are blocked. |
@@ -447,8 +447,9 @@ Transport is selected by a single CLI flag: `--transport stdio|http`. The Docker
 | `MELI_AUTH_TRACE` | _(unset)_ | Set to `1` to emit redacted token-source traces for verifying per-user OAuth wiring. |
 | `APIFY_TOKEN` | _(unset)_ | **Enables web price enrichment.** Shared Apify API token (see [Web price enrichment](#web-price-enrichment-apify)). One token serves all agents; not per-user. |
 | `APIFY_ML_ACTOR` | `sourabhbgp~mercadolibre-scraper` | Apify actor id used for product/search/seller/reviews scraping. |
-| `APIFY_TIMEOUT_MS` | `35000` | Per-scrape timeout. Failures degrade silently to no enrichment. |
-| `SCRAPE_LIMIT` | `3` | Max no-buy-box catalog products enriched per `find_offers_for_product_query` call (capped at 5). |
+| `APIFY_TIMEOUT_MS` | `45000` | Per-scrape timeout. Failures degrade silently to no enrichment. Keep strictly below the MCP gateway tool-execution timeout (recommended Bifrost = 60s). |
+| `WEB_DETAIL_TIMEOUT_MS` | `20000` | Per-call timeout for the best-effort seller/installments product-detail scrape in `find_offers_for_product_query`. A slow page degrades to the search hit's price+link. |
+| `SCRAPE_LIMIT` | `3` | Max web offers returned per `find_offers_for_product_query` call (capped at 5). |
 | `SCRAPE_CACHE_TTL_MS` | `600000` | In-memory TTL cache for scrape results (10 min). |
 
 ---

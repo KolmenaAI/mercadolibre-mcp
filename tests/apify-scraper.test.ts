@@ -178,6 +178,19 @@ const WEB_OFFER: ScrapedOffer = {
   scraped_at: "2026-06-08T19:33:52.869Z",
 };
 
+const WEB_SEARCH_HIT: ScrapedSearchResult = {
+  title: "Apple iPhone 15 (128 GB) - Azul",
+  price: 1265000,
+  original_price: null,
+  currency: "ARS",
+  condition: "NewCondition",
+  free_shipping: true,
+  rating: null,
+  seller_name: null,
+  catalog_product_id: "MLA27172667",
+  url: "https://www.mercadolibre.com.ar/p/MLA27172667",
+};
+
 describe("enrichment wiring", () => {
   let client: MercadoLibreClient;
 
@@ -186,7 +199,7 @@ describe("enrichment wiring", () => {
     client = new MercadoLibreClient("TOKEN");
   });
 
-  it("findOffersForProductQuery promotes a scraped catalog item into offers with price_source web", async () => {
+  it("findOffersForProductQuery sources web offers from website search and enriches seller via product detail", async () => {
     mockFetch
       .mockResolvedValueOnce(jsonResponse({ results: [{ id: "MLA27172667", name: "iPhone 15 Azul" }] }))
       .mockResolvedValueOnce(
@@ -201,7 +214,7 @@ describe("enrichment wiring", () => {
     const result = (await findOffersForProductQuery(
       client,
       { query: "iphone 15 azul" },
-      new FakeScraper(WEB_OFFER)
+      new FakeScraper(WEB_OFFER, [WEB_SEARCH_HIT])
     )) as {
       offer_count: number;
       web_enriched_count: number;
@@ -216,25 +229,47 @@ describe("enrichment wiring", () => {
       price: 1265000,
       price_source: "web",
       catalog_product_id: "MLA27172667",
+      permalink: "https://www.mercadolibre.com.ar/p/MLA27172667",
     });
+    // seller layered in from the best-effort product-mode detail scrape
+    expect((result.offers[0].seller as { nickname: string }).nickname).toBe("FDATECNO");
   });
 
-  it("findOffersForProductQuery enriches even when the catalog permalink is empty (rebuilds /p/{id})", async () => {
+  it("findOffersForProductQuery keeps the search hit's price+link when product detail fails", async () => {
     mockFetch
       .mockResolvedValueOnce(jsonResponse({ results: [{ id: "MLA68039639", name: "Samsung B350E" }] }))
       .mockResolvedValueOnce(
         jsonResponse({ id: "MLA68039639", name: "Samsung B350E", buy_box_winner: null, permalink: "" })
       );
 
+    const hit: ScrapedSearchResult = {
+      title: "Samsung B350E Dual SIM",
+      price: 200000,
+      original_price: null,
+      currency: "ARS",
+      condition: "NewCondition",
+      free_shipping: false,
+      rating: null,
+      seller_name: null,
+      catalog_product_id: "MLA68039639",
+      url: "https://www.mercadolibre.com.ar/p/MLA68039639",
+    };
+
+    // product-mode detail returns null (slow/blocked) -> graceful degrade
     const result = (await findOffersForProductQuery(
       client,
       { query: "samsung b350e" },
-      new FakeScraper({ ...WEB_OFFER, price: 200000 })
+      new FakeScraper(null, [hit])
     )) as { offer_count: number; web_enriched_count: number; offers: Array<Record<string, unknown>> };
 
     expect(result.offer_count).toBe(1);
     expect(result.web_enriched_count).toBe(1);
-    expect(result.offers[0]).toMatchObject({ price: 200000, price_source: "web" });
+    expect(result.offers[0]).toMatchObject({
+      price: 200000,
+      price_source: "web",
+      permalink: "https://www.mercadolibre.com.ar/p/MLA68039639",
+      seller: null,
+    });
   });
 
   it("findOffersForProductQuery leaves catalog_without_price when scrape_limit is 0", async () => {
@@ -247,7 +282,7 @@ describe("enrichment wiring", () => {
     const result = (await findOffersForProductQuery(
       client,
       { query: "iphone", scrape_limit: 0 },
-      new FakeScraper(WEB_OFFER)
+      new FakeScraper(WEB_OFFER, [WEB_SEARCH_HIT])
     )) as { offer_count: number; web_enriched_count: number; catalog_without_price_count: number };
 
     expect(result.offer_count).toBe(0);

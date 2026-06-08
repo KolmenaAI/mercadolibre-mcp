@@ -1,5 +1,16 @@
 # Changelog — @kolmena-ai/meli-mcp
 
+## 1.9.4
+
+### Web offers from website search (fixes niche/new models, e.g. MacBook Air M4)
+
+`find_offers_for_product_query` enriched prices by scraping the **catalog API's** product matches. For niche or just-released models the catalog API (`/products/search`) returns the wrong/older variants (e.g. MacBook Pro 14 / Air M2 for "MacBook Air M4"), so the per-`/p`-page scrapes found no price and timed out — the user got "no price available" even though active listings existed.
+
+- **Web enrichment is now sourced from a single website-**search** scrape** (the same ranking a shopper sees) instead of N per-product-page scrapes of the catalog API's matches. This is one fast run (~10s) and returns the *right* listings with prices + permalinks.
+- **Best-effort seller/installments enrichment**: the top `scrape_limit` search hits are enriched with a product-mode scrape (bounded by `WEB_DETAIL_TIMEOUT_MS`, default 20s) to recover seller, installments, condition and shipping. If a product page is slow/blocked, the offer **degrades gracefully** to the search hit's price + permalink instead of failing the call.
+- Results are filtered for relevance against the query and to the `price_min`/`price_max` window; every web offer keeps `price_source: "web"` and a clickable `permalink`.
+- New env `WEB_DETAIL_TIMEOUT_MS` (default 20000).
+
 ## 1.9.3
 
 ### Parallel web price scraping (fixes MCP call timeout)
