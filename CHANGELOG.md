@@ -1,5 +1,11 @@
 # Changelog — @kolmena-ai/meli-mcp
 
+## 1.9.2
+
+### Fix: treat a scraped price of 0 as "no price"
+
+Some product pages return `price: 0` (no real offer). The scraper now treats non-positive prices as missing for both `scrapeProduct` and `scrapeSearch`, so offers never surface a bogus `$0`.
+
 ## 1.9.1
 
 ### Fix: web price enrichment skipped when catalog permalink is empty

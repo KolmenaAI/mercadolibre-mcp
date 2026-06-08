@@ -304,7 +304,8 @@ export class ApifyScraper implements ScraperProvider {
     const first = rows[0] as ApifyProductRow | undefined;
     if (!first) return null;
     const offer = this.normalizeProduct(first);
-    return offer.price !== null ? offer : null;
+    // price 0 means the page had no real offer — treat as "no price".
+    return offer.price !== null && offer.price > 0 ? offer : null;
   }
 
   async scrapeSearch(
@@ -320,7 +321,7 @@ export class ApifyScraper implements ScraperProvider {
     );
     return rows
       .map((r) => this.normalizeSearch(r as ApifyProductRow))
-      .filter((r) => r.price !== null);
+      .filter((r) => r.price !== null && r.price > 0);
   }
 
   async scrapeSeller(sellerUrl: string, opts?: { site_id?: string }): Promise<ScrapedSeller | null> {

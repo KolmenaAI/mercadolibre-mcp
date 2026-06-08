@@ -91,6 +91,12 @@ describe("ApifyScraper", () => {
     expect(await scraper.scrapeProduct("https://x")).toBeNull();
   });
 
+  it("treats a zero price as no price", async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse([{ title: "zero", price: 0, currency: "ARS", url: "u" }]));
+    const scraper = new ApifyScraper({ APIFY_TOKEN: "tok" } as NodeJS.ProcessEnv);
+    expect(await scraper.scrapeProduct("https://x")).toBeNull();
+  });
+
   it("fails soft on non-2xx", async () => {
     mockFetch.mockResolvedValueOnce(jsonResponse({ error: "bad" }, 402));
     const scraper = new ApifyScraper({ APIFY_TOKEN: "tok" } as NodeJS.ProcessEnv);
