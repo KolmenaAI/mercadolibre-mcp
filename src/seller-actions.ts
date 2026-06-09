@@ -1,5 +1,6 @@
 import { MercadoLibreClient } from "./client.js";
 import { MercadoLibreError } from "./errors.js";
+import type { MercadoLibreListingPictureRef } from "./listing-types.js";
 import { getCategoryAttributes } from "./buyer-actions.js";
 import { chunkIds, type MarketplaceItemSummary } from "./item-helpers.js";
 import {
@@ -56,9 +57,9 @@ import type {
 } from "./seller-schemas.js";
 import {
   buildCreateItemBody,
-  buildListingPictures,
+  buildPicturesPutPayload,
   extractItemPictureRefs,
-  mergeListingPictures,
+  isCatalogManagedListing,
   type CategoryAttributeDefinition,
   guessImageFilename,
   parseListingValidationResponse,
@@ -660,46 +661,77 @@ export async function sellerAddListingPictures(
   const item = await assertMyItem(client, params.item_id, sellerId);
   const itemRecord = item as Record<string, unknown>;
 
+  if (isCatalogManagedListing(itemRecord)) {
+    throw new Error(
+      "This listing is a Mercado Libre catalog listing (catalog_listing). Photos are managed by the catalog and cannot be added via the seller API — the PUT may succeed but the live page will not show seller-added images. Suggest corrections in Mercado Libre (Listings → Edit → Modification history) or publish a traditional (non-catalog) listing."
+    );
+  }
+
   const newIds = params.picture_ids ?? [];
   const newSources = params.picture_sources ?? [];
   if (newIds.length === 0 && newSources.length === 0) {
     throw new Error("Provide at least one picture_id or picture_source to add");
   }
 
-  let pictures;
-  if (params.replace_pictures) {
-    pictures = buildListingPictures(newSources, newIds);
-  } else {
-    const existing = extractItemPictureRefs(itemRecord);
-    pictures = mergeListingPictures(existing, newSources, newIds);
+  const payload = buildPicturesPutPayload(
+    itemRecord,
+    newSources.length > 0 ? newSources : undefined,
+    newIds.length > 0 ? newIds : undefined,
+    params.replace_pictures
+  );
+
+  if (payload.pictures.length === 0) {
+    throw new Error("No pictures to set on item");
   }
 
-  if (!pictures || pictures.length === 0) {
-    throw new Error("No pictures to set on item");
+  const body: Record<string, MercadoLibreListingPictureRef[] | Array<{ id: number; picture_ids: string[] }>> = {
+    pictures: payload.pictures,
+  };
+  if (payload.variations && payload.variations.length > 0) {
+    body.variations = payload.variations;
   }
 
   try {
     const result = await client.put(
       `/items/${encodeURIComponent(params.item_id)}`,
-      { pictures } as unknown as Record<
+      body as unknown as Record<
         string,
         string | number | boolean | null | Record<string, unknown>
       >
     );
-    return {
+
+    const afterItem = await client.get<Record<string, unknown>>(
+      `/items/${encodeURIComponent(params.item_id)}`
+    );
+    const verifiedPictureCount = extractItemPictureRefs(afterItem).length;
+    const expectedPictureCount = payload.pictures.length;
+    const verified = verifiedPictureCount >= expectedPictureCount;
+
+    const response: Record<string, unknown> = {
       api: "PUT /items/{id} (pictures)",
       seller_id: sellerId,
       item_id: params.item_id,
       mode: params.replace_pictures ? "replace" : "add",
       existing_picture_count: extractItemPictureRefs(itemRecord).length,
-      pictures_sent: pictures,
+      pictures_sent: payload.pictures,
+      variations_sent: payload.variations ?? null,
       added_picture_ids: newIds,
+      verified,
+      verified_picture_count: verifiedPictureCount,
+      expected_picture_count: expectedPictureCount,
       result,
     };
+
+    if (!verified) {
+      response.warning =
+        "PUT succeeded but GET /items still shows fewer pictures than expected. If this listing is catalog-linked, photos may not be editable via API. Otherwise retry — items with variations require picture_ids on each variation (now included automatically).";
+    }
+
+    return response;
   } catch (error) {
     if (error instanceof MercadoLibreError) {
       throw new Error(
-        `${error.message}\n\nMercado Libre requires sending existing picture ids plus new ones when adding. This tool merges them automatically.\n\nRequest body sent:\n${JSON.stringify({ pictures }, null, 2)}`
+        `${error.message}\n\nMercado Libre requires existing picture ids plus new ones when adding, and items with variations need picture_ids on each variation. This tool merges both automatically.\n\nRequest body sent:\n${JSON.stringify(body, null, 2)}`
       );
     }
     throw error;

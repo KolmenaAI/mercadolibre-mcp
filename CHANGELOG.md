@@ -1,5 +1,17 @@
 # Changelog — @kolmena-ai/meli-mcp
 
+## 1.10.3
+
+### Fix `seller_add_listing_pictures` — variations + post-PUT verification
+
+The tool PUT `pictures[]` at item root and returned success, but the live listing often still showed one photo. Two causes:
+
+1. **Items with variations** — Mercado Libre requires the new picture id in **each variation's `picture_ids[]`** as well as in item-level `pictures[]`, and every existing variation id must be sent or variations are dropped ([Working with pictures](https://developers.mercadolibre.com.ar/en_us/categories-and-attributes/working-with-pictures)). v1.10.2 only updated item-level pictures.
+2. **Catalog listings** — `catalog_listing` items inherit photos from ML catalog; seller PUT may succeed but the public page won't show seller-added images ([Catalog listing guide](https://global-selling.mercadolibre.com/learning-center/news/guide-on-your-catalog-listings)).
+
+- **`seller_add_listing_pictures`** now merges `picture_ids` into **all variations** when present, then **GET /items/{id}** after PUT and returns `verified`, `verified_picture_count`, and a `warning` when counts don't match.
+- **Catalog listings** (`catalog_listing: true`) fail fast with a clear message instead of a false success.
+
 ## 1.10.2
 
 ### Add `seller_add_listing_pictures` — attach uploaded images to existing listings

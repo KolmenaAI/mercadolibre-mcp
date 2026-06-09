@@ -485,7 +485,7 @@ export function registerSellerMercadoLibreTools(server: McpServer, tools: Tools)
 
   server.tool(
     "seller_add_listing_pictures",
-    "Add or replace pictures on an existing listing (PUT /items/{id} pictures[]). Default add mode merges new picture_ids with existing ones (ML requires keeping current ids). Upload first with seller_upload_listing_picture.",
+    "Add or replace pictures on an existing listing (PUT /items/{id} pictures[] + variation picture_ids when applicable). Default add mode merges new picture_ids with existing ones. Upload first with seller_upload_listing_picture. Verifies with GET after PUT.",
     {
       item_id: z.string(),
       picture_ids: z

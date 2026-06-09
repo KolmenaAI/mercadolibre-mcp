@@ -350,16 +350,23 @@ describe("seller-actions", () => {
   });
 
   describe("sellerAddListingPictures", () => {
-    it("PUTs merged existing + new picture ids (not seller_update_my_item)", async () => {
+    it("PUTs merged pictures and verifies with GET (no variations)", async () => {
       mockFetch.mockResolvedValueOnce(jsonResponse({ id: 10 }));
       mockFetch.mockResolvedValueOnce(
         jsonResponse({
           id: "MLA999",
           seller_id: 10,
           pictures: [{ id: "existing-pic" }],
+          variations: [],
         })
       );
       mockFetch.mockResolvedValueOnce(jsonResponse({ id: "MLA999", pictures: [] }));
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({
+          id: "MLA999",
+          pictures: [{ id: "existing-pic" }, { id: "625657-MLA112981342193_062026" }],
+        })
+      );
 
       const result = await sellerAddListingPictures(client, {
         item_id: "MLA999",
@@ -368,11 +375,44 @@ describe("seller-actions", () => {
       expect(result).toMatchObject({
         api: "PUT /items/{id} (pictures)",
         mode: "add",
-        added_picture_ids: ["625657-MLA112981342193_062026"],
+        verified: true,
+        verified_picture_count: 2,
+        variations_sent: null,
       });
       const putInit = mockFetch.mock.calls[2][1] as RequestInit;
       expect(JSON.parse(putInit.body as string)).toEqual({
         pictures: [{ id: "existing-pic" }, { id: "625657-MLA112981342193_062026" }],
+      });
+    });
+
+    it("includes variation picture_ids when item has variations", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ id: 10 }));
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({
+          id: "MLA999",
+          seller_id: 10,
+          pictures: [{ id: "existing-pic" }],
+          variations: [{ id: 8822, picture_ids: ["existing-pic"] }],
+        })
+      );
+      mockFetch.mockResolvedValueOnce(jsonResponse({ id: "MLA999" }));
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({
+          id: "MLA999",
+          pictures: [{ id: "existing-pic" }, { id: "new-pic" }],
+          variations: [{ id: 8822, picture_ids: ["existing-pic", "new-pic"] }],
+        })
+      );
+
+      await sellerAddListingPictures(client, {
+        item_id: "MLA999",
+        picture_ids: ["new-pic"],
+      });
+
+      const putInit = mockFetch.mock.calls[2][1] as RequestInit;
+      expect(JSON.parse(putInit.body as string)).toEqual({
+        pictures: [{ id: "existing-pic" }, { id: "new-pic" }],
+        variations: [{ id: 8822, picture_ids: ["existing-pic", "new-pic"] }],
       });
     });
   });

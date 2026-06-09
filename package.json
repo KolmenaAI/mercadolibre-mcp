@@ -1,6 +1,6 @@
 {
   "name": "@kolmena-ai/meli-mcp",
-  "version": "1.10.2",
+  "version": "1.10.3",
   "description": "Kolmena MercadoLibre MCP — buyer and seller tools: search, store ops, listings, orders, Q&A, claims.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

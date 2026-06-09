@@ -107,6 +107,147 @@ export function mergeListingPictures(
   return merged;
 }
 
+export interface ItemVariationPictureRow {
+  id: number;
+  picture_ids: string[];
+}
+
+/** Catalog listings inherit photos from ML catalog — seller PUT may succeed but not change the live page. */
+export function isCatalogManagedListing(item: Record<string, unknown>): boolean {
+  if (item.catalog_listing === true) {
+    return true;
+  }
+  const tags = item.tags;
+  if (Array.isArray(tags)) {
+    return tags.some(
+      (tag) => tag === "catalog_listing" || tag === "catalog_only_restricted"
+    );
+  }
+  return false;
+}
+
+export function parseItemVariationsWithPictures(
+  item: Record<string, unknown>
+): ItemVariationPictureRow[] {
+  const raw = item.variations;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  const rows: ItemVariationPictureRow[] = [];
+  for (const entry of raw) {
+    if (entry === null || typeof entry !== "object") {
+      continue;
+    }
+    const record = entry as Record<string, unknown>;
+    const id = Number(record.id);
+    if (!Number.isFinite(id)) {
+      continue;
+    }
+    const pictureIds: string[] = [];
+    if (Array.isArray(record.picture_ids)) {
+      for (const pic of record.picture_ids) {
+        if (typeof pic === "string" && pic.trim() !== "") {
+          pictureIds.push(pic.trim());
+        }
+      }
+    }
+    rows.push({ id, picture_ids: pictureIds });
+  }
+  return rows;
+}
+
+export function pictureRefsToWireIds(refs: MercadoLibreListingPictureRef[]): string[] {
+  const ids: string[] = [];
+  for (const ref of refs) {
+    if (typeof ref.id === "string" && ref.id.trim() !== "") {
+      ids.push(ref.id.trim());
+    } else if (typeof ref.source === "string" && ref.source.trim() !== "") {
+      ids.push(ref.source.trim());
+    }
+  }
+  return ids;
+}
+
+export function mergeVariationPictureIds(
+  existing: string[],
+  pictureSources: string[] | undefined,
+  pictureIds: string[] | undefined,
+  replace?: boolean
+): string[] {
+  if (replace) {
+    return pictureRefsToWireIds(buildListingPictures(pictureSources, pictureIds) ?? []);
+  }
+  const merged = [...existing];
+  const seen = new Set(existing);
+  if (pictureIds) {
+    for (const id of pictureIds) {
+      const trimmed = id.trim();
+      if (trimmed !== "" && !seen.has(trimmed)) {
+        merged.push(trimmed);
+        seen.add(trimmed);
+      }
+    }
+  }
+  if (pictureSources) {
+    for (const source of pictureSources) {
+      const trimmed = source.trim();
+      if (trimmed !== "") {
+        merged.push(trimmed);
+      }
+    }
+  }
+  return merged;
+}
+
+export interface PicturesPutPayload {
+  pictures: MercadoLibreListingPictureRef[];
+  variations?: Array<{ id: number; picture_ids: string[] }>;
+}
+
+/**
+ * Build PUT /items/{id} body for picture add/replace.
+ * When the item has variations, ML requires picture_ids on each variation too
+ * (and every existing variation id must be present or variations are dropped).
+ */
+export function buildPicturesPutPayload(
+  item: Record<string, unknown>,
+  pictureSources: string[] | undefined,
+  pictureIds: string[] | undefined,
+  replacePictures?: boolean
+): PicturesPutPayload {
+  let pictures: MercadoLibreListingPictureRef[];
+  if (replacePictures) {
+    pictures = buildListingPictures(pictureSources, pictureIds) ?? [];
+  } else {
+    pictures = mergeListingPictures(
+      extractItemPictureRefs(item),
+      pictureSources,
+      pictureIds
+    );
+  }
+
+  const variationRows = parseItemVariationsWithPictures(item);
+  if (variationRows.length === 0) {
+    return { pictures };
+  }
+
+  const itemPictureIds = pictureRefsToWireIds(extractItemPictureRefs(item));
+  const variations = variationRows.map((row) => {
+    const base = row.picture_ids.length > 0 ? row.picture_ids : itemPictureIds;
+    return {
+      id: row.id,
+      picture_ids: mergeVariationPictureIds(
+        base,
+        pictureSources,
+        pictureIds,
+        replacePictures
+      ),
+    };
+  });
+
+  return { pictures, variations };
+}
+
 export function buildCreateItemBody(
   params: SellerCreateListingParams | SellerValidateListingParams
 ): MercadoLibreCreateItemBody {

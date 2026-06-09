@@ -4,6 +4,7 @@ import {
   summarizeCategoryListingRequirements,
   extractItemPictureRefs,
   mergeListingPictures,
+  buildPicturesPutPayload,
 } from "../src/seller-listing-helpers.js";
 
 describe("seller-listing-helpers", () => {
@@ -48,5 +49,18 @@ describe("seller-listing-helpers", () => {
   it("mergeListingPictures appends new ids without dropping existing", () => {
     const merged = mergeListingPictures([{ id: "pic-a" }], undefined, ["pic-b", "pic-a"]);
     expect(merged).toEqual([{ id: "pic-a" }, { id: "pic-b" }]);
+  });
+
+  it("buildPicturesPutPayload adds variation picture_ids when item has variations", () => {
+    const payload = buildPicturesPutPayload(
+      {
+        pictures: [{ id: "pic-a" }],
+        variations: [{ id: 99, picture_ids: ["pic-a"] }],
+      },
+      undefined,
+      ["pic-b"]
+    );
+    expect(payload.pictures).toEqual([{ id: "pic-a" }, { id: "pic-b" }]);
+    expect(payload.variations).toEqual([{ id: 99, picture_ids: ["pic-a", "pic-b"] }]);
   });
 });
