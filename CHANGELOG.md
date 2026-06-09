@@ -1,5 +1,15 @@
 # Changelog — @kolmena-ai/meli-mcp
 
+## 1.10.0
+
+### Add `get_listing_offer` — price/shipping for a single pasted listing
+
+When a buyer pastes **one specific publication** ("pasame el precio y envío de la publicación MLA1804763057", or a listing URL), there was no tool to answer it: the per-listing `/items/{id}` API is `access_denied` for buyer OAuth tokens (which is why `get_item` / `get_item_shipping_options` were removed in 1.9.6), and the remaining tools are all catalog/product-query scoped. The agent ended up guessing the removed `get_item_shipping_options` and surfacing "the tool isn't available in my configuration."
+
+- **New tool `get_listing_offer`** takes a `listing` (a listing/item id like `MLA1804763057` **or** a full listing/`/p/` URL) and an optional `site_id`, and returns the live website offer (`price_source: web`): `price`, `original_price`, `installments`, `free_shipping`/`shipping`, `condition`, `availability` and `seller`. It resolves a bare id to the canonical `articulo.mercadolibre.<tld>/MLA-<digits>-_JM` listing URL and recovers the data with the existing Apify scraper (same path already used to enrich search-hit listing URLs).
+- **Fails soft**: returns `offer: null` + a human note (never throws) when the scraper is disabled, the input isn't a resolvable listing, or the page yields no price (sold out / paused / unscrapeable) — the buyer skill then falls back to `find_offers_for_product_query` on the product name.
+- **Shipping caveat**: `free_shipping` reflects the page; an exact shipping cost depends on the buyer's address (quoted at checkout), so the tool/skill never invent a shipping figure.
+
 ## 1.9.6
 
 ### Remove buyer-inaccessible / decommissioned / legacy tools

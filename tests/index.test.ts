@@ -18,6 +18,7 @@ describe("createMercadoLibreTools", () => {
     expect(typeof tools.search_items).toBe("function");
     expect(typeof tools.find_offers_for_product_query).toBe("function");
     expect(typeof tools.get_product_buybox).toBe("function");
+    expect(typeof tools.get_listing_offer).toBe("function");
     expect(typeof tools.rank_sellers_for_query).toBe("function");
     expect(typeof tools.get_my_orders).toBe("function");
     expect(typeof tools.search_my_claims).toBe("function");
@@ -28,7 +29,7 @@ describe("createMercadoLibreTools", () => {
     expect(tools.get_items_bulk).toBeUndefined();
     expect(tools.compare_products).toBeUndefined();
     expect(tools.search_buyable_listings).toBeUndefined();
-    expect(Object.keys(tools).length).toBeGreaterThanOrEqual(56);
+    expect(Object.keys(tools).length).toBeGreaterThanOrEqual(57);
   });
 
   it("tools call the API correctly", async () => {

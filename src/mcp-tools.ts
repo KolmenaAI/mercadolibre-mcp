@@ -207,6 +207,18 @@ export function registerMercadoLibreTools(server: McpServer, tools: Tools): void
   );
 
   server.tool(
+    "get_listing_offer",
+    "Read price + shipping + seller for ONE specific listing the user pastes by id or URL (e.g. 'pasame el precio y envío de MLA1804763057' or a listing link). Pass the id (MLA…) or full URL in `listing`. Returns live website data (price_source: web): price, installments, free_shipping/shipping, condition, availability and seller. There is NO catalog/API tool for a bare listing id (get_item is gone) — use this for a single known publication; use find_offers_for_product_query when the user names a product instead. Exact shipping cost depends on the buyer address; free_shipping reflects what the page shows.",
+    {
+      listing: z
+        .string()
+        .describe("Listing/item id (e.g. MLA1804763057) or a full Mercado Libre listing/catalog URL."),
+      site_id: z.string().optional(),
+    },
+    async (params) => toolResult(() => tools.get_listing_offer(params))()
+  );
+
+  server.tool(
     "rank_sellers_for_query",
     "PRIMARY merchant-ranking tool (e.g. '3 best sellers for MacBook Air with prices'). Returns web_ranked_sellers[] built from live scraped search offers (seller + cheapest price, price_source: web) which works even when official seller-inventory endpoints are blocked, plus the API path (domain_discovery → products/search → buy-box/category sellers → reputation rank → GET /users/{id}/items/search). Does NOT use deprecated GET /sites/search?q=.",
     {

@@ -88,6 +88,19 @@ export interface GetClaimReturnsParams {
   claim_id: number;
 }
 
+/**
+ * Direct single-listing lookup. For when the user pastes one specific
+ * publication (e.g. "precio y envío de MLA1804763057" or a listing URL) and
+ * wants its price/shipping/seller. The per-listing /items API is access_denied
+ * for buyer tokens, so this recovers the data by scraping the listing page.
+ */
+export interface GetListingOfferParams {
+  /** A listing/item id (e.g. MLA1804763057) or a full Mercado Libre listing/catalog URL. */
+  listing: string;
+  /** Site id (e.g. MLA) for the scrape country. Derived from the id/URL when omitted. */
+  site_id?: string;
+}
+
 /** Product-scoped catalog → buy-box offers, with live web price enrichment. */
 export interface FindOffersForProductQueryParams {
   query: string;

@@ -35,6 +35,7 @@ run_tool get_currency_conversion --tool-arg 'from=USD' --tool-arg 'to=ARS' --too
 run_tool get_category --tool-arg 'category_id=MLA1055'
 run_tool search_items --tool-arg 'query=iPhone 15' --tool-arg 'site_id=MLA' --tool-arg 'limit=2'
 run_tool find_offers_for_product_query --tool-arg 'query=iPhone 15' --tool-arg 'site_id=MLA' --tool-arg 'catalog_limit=2' --tool-arg 'price_max=99999999'
+run_tool get_listing_offer --tool-arg 'listing=MLA1804763057' --tool-arg 'site_id=MLA'
 
 # Catalog id from search — replace with a real id from your search_items output if needed
 CATALOG_ID="${SMOKE_CATALOG_ID:-MLA55016525}"

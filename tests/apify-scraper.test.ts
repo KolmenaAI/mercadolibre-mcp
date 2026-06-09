@@ -12,6 +12,7 @@ import { MercadoLibreClient } from "../src/client.js";
 import {
   findOffersForProductQuery,
   getProductBuybox,
+  getListingOffer,
   getItemReviews,
   rankSellersForQuery,
 } from "../src/buyer-actions.js";
@@ -308,6 +309,94 @@ describe("enrichment wiring", () => {
 
     expect(result.price_source).toBe("web");
     expect(result.web_offer).toMatchObject({ price: 1265000, price_source: "web" });
+  });
+
+  it("getListingOffer scrapes a pasted listing id and returns a web offer", async () => {
+    const result = (await getListingOffer(
+      { listing: "MLA1804763057" },
+      new FakeScraper(WEB_OFFER)
+    )) as {
+      item_id: string | null;
+      price_source: string | null;
+      offer: Record<string, unknown> | null;
+    };
+
+    expect(result.item_id).toBe("MLA1804763057");
+    expect(result.price_source).toBe("web");
+    expect(result.offer).toMatchObject({
+      price: 1265000,
+      price_source: "web",
+      free_shipping: true,
+      seller: expect.objectContaining({ nickname: "FDATECNO" }),
+    });
+  });
+
+  it("getListingOffer builds an articulo listing URL from a bare id", async () => {
+    let seenUrl: string | null = null;
+    const capturing: ScraperProvider = {
+      enabled: true,
+      async scrapeProduct(url: string): Promise<ScrapedOffer | null> {
+        seenUrl = url;
+        return WEB_OFFER;
+      },
+      async scrapeSearch(): Promise<ScrapedSearchResult[]> {
+        return [];
+      },
+      async scrapeSeller(): Promise<ScrapedSeller | null> {
+        return null;
+      },
+      async scrapeReviews(): Promise<ScrapedReview[]> {
+        return [];
+      },
+    };
+
+    await getListingOffer({ listing: "MLA1804763057" }, capturing);
+    expect(seenUrl).toBe("https://articulo.mercadolibre.com.ar/MLA-1804763057-_JM");
+  });
+
+  it("getListingOffer passes a full pasted URL straight to the scraper", async () => {
+    let seenUrl: string | null = null;
+    const pasted = "https://articulo.mercadolibre.com.ar/MLA-1804763057-algo-_JM";
+    const capturing: ScraperProvider = {
+      enabled: true,
+      async scrapeProduct(url: string): Promise<ScrapedOffer | null> {
+        seenUrl = url;
+        return WEB_OFFER;
+      },
+      async scrapeSearch(): Promise<ScrapedSearchResult[]> {
+        return [];
+      },
+      async scrapeSeller(): Promise<ScrapedSeller | null> {
+        return null;
+      },
+      async scrapeReviews(): Promise<ScrapedReview[]> {
+        return [];
+      },
+    };
+
+    await getListingOffer({ listing: pasted }, capturing);
+    expect(seenUrl).toBe(pasted);
+  });
+
+  it("getListingOffer returns offer:null with a note when no scraper is configured", async () => {
+    const result = (await getListingOffer({ listing: "MLA1804763057" }, undefined)) as {
+      offer: unknown;
+      price_source: string | null;
+      note: string;
+    };
+    expect(result.offer).toBeNull();
+    expect(result.price_source).toBeNull();
+    expect(result.note).toContain("not configured");
+  });
+
+  it("getListingOffer returns offer:null when the input is not a resolvable listing", async () => {
+    const result = (await getListingOffer(
+      { listing: "not-a-listing" },
+      new FakeScraper(WEB_OFFER)
+    )) as { offer: unknown; item_id: string | null; note: string };
+    expect(result.offer).toBeNull();
+    expect(result.item_id).toBeNull();
+    expect(result.note).toContain("Could not resolve");
   });
 
   it("getItemReviews falls back to scraped web reviews when the API is empty", async () => {

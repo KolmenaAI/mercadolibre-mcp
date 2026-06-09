@@ -12,6 +12,7 @@ import {
 } from "./actions.js";
 import {
   getProductBuybox,
+  getListingOffer,
   getItemReviews,
   getCategoryAttributes,
   getDomainDiscovery,
@@ -87,6 +88,7 @@ import type {
 } from "./schemas.js";
 import type {
   GetProductBuyboxParams,
+  GetListingOfferParams,
   GetItemReviewsParams,
   GetCategoryAttributesParams,
   GetDomainDiscoveryParams,
@@ -163,6 +165,8 @@ export function createMercadoLibreTools(accessToken?: string) {
       get_product: (params: GetProductParams) => getProduct(client, params),
       get_product_buybox: (params: GetProductBuyboxParams) =>
         getProductBuybox(client, params, scraper),
+      get_listing_offer: (params: GetListingOfferParams) =>
+        getListingOffer(params, scraper),
       get_item_description: (params: GetItemDescriptionParams) =>
         getItemDescription(client, params),
       get_item_reviews: (params: GetItemReviewsParams) =>

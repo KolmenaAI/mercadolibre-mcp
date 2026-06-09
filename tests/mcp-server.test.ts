@@ -44,6 +44,7 @@ describe("MCP Server", () => {
     const names = result.tools.map((t) => t.name).sort();
 
     expect(names).toContain("find_offers_for_product_query");
+    expect(names).toContain("get_listing_offer");
     expect(names).toContain("rank_sellers_for_query");
     // Removed: buyer-inaccessible / decommissioned / legacy tools.
     expect(names).not.toContain("search_listings");

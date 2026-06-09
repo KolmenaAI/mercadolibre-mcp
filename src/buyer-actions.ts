@@ -31,6 +31,7 @@ import type {
   GetDomainDiscoveryParams,
   GetItemQuestionsParams,
   GetItemReviewsParams,
+  GetListingOfferParams,
   GetMeParams,
   GetMyOrdersParams,
   GetOfficialStoreParams,
@@ -177,6 +178,98 @@ export async function getProductBuybox(
   };
 }
 
+/**
+ * Direct single-listing lookup for a publication the user pasted by id or URL.
+ *
+ * Why scrape instead of GET /items/{id}: the per-listing API is access_denied
+ * for buyer OAuth tokens (that endpoint was removed for the same reason), so a
+ * bare listing id can only be resolved to a live price/seller/shipping by
+ * loading the public listing page. Fails soft: returns a structured payload
+ * with offer:null + a note (never throws) when the scraper is disabled or the
+ * page yields no price.
+ */
+export async function getListingOffer(
+  params: GetListingOfferParams,
+  scraper?: ScraperProvider
+): Promise<unknown> {
+  const raw = (params.listing ?? "").trim();
+  const isUrl = /^https?:\/\//i.test(raw);
+  const idMatch = /^(ML[A-Z])-?(\d+)$/.exec(raw.toUpperCase());
+  const itemId = idMatch ? `${idMatch[1]}${idMatch[2]}` : null;
+  const site = siteForId(params.site_id, itemId ?? undefined);
+  const url = isUrl ? raw : itemId ? listingUrlFromId(itemId, site) : null;
+
+  if (!url) {
+    return {
+      requested: raw,
+      item_id: null,
+      offer: null,
+      price_source: null,
+      note: "Could not resolve a Mercado Libre listing from the input. Pass a listing id like MLA1804763057 or a full listing URL.",
+    };
+  }
+
+  if (!scraper?.enabled) {
+    return {
+      requested: raw,
+      item_id: itemId,
+      url,
+      offer: null,
+      price_source: null,
+      note: "Web price enrichment is not configured (no scraper), so the listing price/shipping cannot be read directly.",
+    };
+  }
+
+  const scraped = await scraper.scrapeProduct(url, { site_id: site });
+  if (!scraped) {
+    return {
+      requested: raw,
+      item_id: itemId,
+      url,
+      offer: null,
+      price_source: null,
+      note: "The listing page returned no live price (it may be sold out, paused, or not scrapeable). Try find_offers_for_product_query with the product name.",
+    };
+  }
+
+  return {
+    requested: raw,
+    item_id: itemId,
+    url: scraped.url ?? url,
+    price_source: "web",
+    offer: {
+      item_id: itemId,
+      title: scraped.title,
+      price: scraped.price,
+      original_price: scraped.original_price,
+      discount_percentage: scraped.discount_percentage,
+      currency_id: scraped.currency,
+      condition: scraped.condition,
+      availability: scraped.availability,
+      available_quantity: scraped.available_quantity,
+      sold_quantity: scraped.sold_quantity,
+      installments: scraped.installments,
+      free_shipping: scraped.free_shipping,
+      shipping: scraped.shipping,
+      rating: scraped.rating,
+      rating_count: scraped.rating_count,
+      seller_id: scraped.seller_id,
+      seller: scraped.seller_name
+        ? {
+            id: scraped.seller_id,
+            nickname: scraped.seller_name,
+            reputation: scraped.seller_reputation,
+            is_official_store: scraped.is_official_store,
+          }
+        : null,
+      permalink: scraped.url ?? url,
+      price_source: "web",
+      scraped_at: scraped.scraped_at,
+    },
+    note: "Live website data for this specific listing (price_source: web). Exact shipping cost depends on the buyer's address; free_shipping reflects what the page shows.",
+  };
+}
+
 function reviewsLookEmpty(result: unknown): boolean {
   if (!result || typeof result !== "object") return true;
   const r = result as Record<string, unknown>;
@@ -254,6 +347,18 @@ function siteTld(siteId: string): string {
 function catalogProductUrl(catalogId: string, siteId: string): string | null {
   if (!/^ML[A-Z]\d/.test(catalogId)) return null;
   return `https://www.mercadolibre.${siteTld(siteId)}/p/${catalogId}`;
+}
+
+/**
+ * Scrapeable listing (item) page URL from a bare item id. The slug-less
+ * `articulo.../MLA-<digits>-_JM` form is the canonical short link Mercado Libre
+ * redirects to the full listing page — which the scraper (a real browser)
+ * follows. Returns null for non-listing ids.
+ */
+function listingUrlFromId(itemId: string, siteId: string): string | null {
+  const m = /^(ML[A-Z])(\d+)$/.exec(itemId.toUpperCase());
+  if (!m) return null;
+  return `https://articulo.mercadolibre.${siteTld(siteId)}/${m[1]}-${m[2]}-_JM`;
 }
 
 export async function getCategoryAttributes(

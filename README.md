@@ -13,6 +13,8 @@ MCP server that connects AI agents to [MercadoLibre](https://www.mercadolibre.co
 
 **Kolmena docs:** [TESTING.md](./TESTING.md) · [BUYER-API-ROADMAP.md](./BUYER-API-ROADMAP.md) · [HANDOFF.md](./HANDOFF.md) · [CHANGELOG.md](./CHANGELOG.md)
 
+> **v1.10.0 — Read a single pasted listing.** New `get_listing_offer` answers "pasame el precio y envío de la publicación MLA…": it takes a listing id or URL and returns the live website price, installments, shipping and seller (`price_source: web`). This fills the gap left when the buyer-inaccessible `/items/{id}` tools were removed — a pasted listing id no longer dead-ends. See [Tools](#buyer--search--catalog).
+>
 > **v1.9.4 — Web offers from website search.** When Mercado Libre's catalog API exposes no buy-box price (common for iPhone / MacBook / refurbished — and especially niche or just-released models), the server now recovers offers from the **website search** (the same ranking a shopper sees) instead of scraping the catalog API's product matches, then best-effort enriches the top hits with seller/installments. This fixes new models like "MacBook Air M4" where the catalog API returned the wrong/older variants. Offers are tagged `price_source: "web"` with a clickable `permalink`. Buyer agents no longer need a browser. See [Web price enrichment](#web-price-enrichment-apify).
 
 ---
@@ -26,6 +28,7 @@ Mercado Libre's catalog API returns **no price** for products without an active 
 | Tool | Enrichment |
 |------|------------|
 | `find_offers_for_product_query` | When the catalog API exposes no price, offers are sourced from the live **website search** (right products for niche/new models) and promoted into `offers[]` with `price_source: "web"` + clickable `permalink`. Top hits are best-effort enriched with seller/installments; a slow product page degrades to price+link. Bounded by `SCRAPE_LIMIT`. |
+| `get_listing_offer` | Scrapes a **single pasted listing** (id `MLA…` or URL) for its live price, installments, free-shipping/shipping, condition, availability and seller (`price_source: web`). |
 | `get_product_buybox` | Returns `web_offer` (live price + seller + installments + shipping) when there is no API buy-box winner. |
 | `search_items` | With `include_web_prices: true`, adds `web_offers[]` (catalog search returns price-less ids otherwise). |
 | `rank_sellers_for_query` | Adds `web_ranked_sellers[]` — sellers + cheapest live price — reliable even when official seller-inventory endpoints are blocked. |
@@ -152,6 +155,7 @@ Upstream `@dan1d/mercadolibre-mcp@1.0.2` shipped 8 buyer-only tools. This fork s
 |------|-------------|
 | `search_items` | Catalog keyword search (`GET /products/search`). Returns catalog product ids. With `include_web_prices` adds live web prices. |
 | `find_offers_for_product_query` | Product-scoped offers: catalog buy-box + live website-search offers (`price_source` api/web). Use for "what can I buy / sellers and prices for X". |
+| `get_listing_offer` | Price/shipping/seller for **one specific listing** the user pastes by id (`MLA…`) or URL. Resolves a bare id to the listing page and scrapes it (`price_source: web`). The only way to read a bare listing id (there is no catalog/API tool for it). |
 | `get_product` | Catalog product datasheet (`GET /products/{id}`). |
 | `get_product_buybox` | Buy box winner listing id and price range for a catalog product; web price fallback. |
 
