@@ -10,6 +10,7 @@ import {
   sellerGetOrder,
   sellerAnswerQuestion,
   sellerGetStoreSnapshot,
+  sellerGetListingHealth,
   sellerInventoryReport,
   sellerUpdateMyItem,
   sellerUploadListingPicture,
@@ -317,6 +318,33 @@ describe("seller-actions", () => {
       const createUrl = mockFetch.mock.calls[1][0] as string;
       expect(createUrl).toContain("/items");
       expect(createUrl).not.toContain("/validate");
+    });
+  });
+
+  describe("sellerGetListingHealth", () => {
+    it("reads quality from /item/{id}/performance (not the discontinued /health)", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ id: 10 }));
+      mockFetch.mockResolvedValueOnce(jsonResponse({ id: "MLA999", seller_id: 10 }));
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({
+          entity_type: "ITEM",
+          entity_id: "MLA999",
+          score: 69,
+          level: "Good",
+          level_wording: "Profesional",
+          buckets: [],
+        })
+      );
+
+      const result = await sellerGetListingHealth(client, { item_id: "MLA999" });
+      expect(result).toMatchObject({
+        api: "GET /item/{id}/performance",
+        item_id: "MLA999",
+        performance: { score: 69, level_wording: "Profesional" },
+      });
+      const perfUrl = mockFetch.mock.calls[2][0] as string;
+      expect(perfUrl).toContain("/item/MLA999/performance");
+      expect(perfUrl).not.toContain("/items/MLA999/health");
     });
   });
 

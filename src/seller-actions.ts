@@ -316,14 +316,19 @@ export async function sellerGetListingHealth(
 ): Promise<unknown> {
   const sellerId = await resolveSellerId(client, params.seller_id);
   await assertMyItem(client, params.item_id, sellerId);
-  const health = await client.get(
-    `/items/${encodeURIComponent(params.item_id)}/health`
+  // Mercado Libre discontinued GET /items/{id}/health (Feb 2026) — it now 404s
+  // for marketplace (buy_it_now) items. The per-item /performance resource
+  // replaces it and groups all listing-quality data (score 0-100, level, and
+  // buckets of opportunities/warnings) into a single call. Note: path is the
+  // singular `/item/` (not `/items/`).
+  const performance = await client.get(
+    `/item/${encodeURIComponent(params.item_id)}/performance`
   );
   return {
-    api: "GET /items/{id}/health",
+    api: "GET /item/{id}/performance",
     seller_id: sellerId,
     item_id: params.item_id,
-    health,
+    performance,
   };
 }
 
@@ -1064,13 +1069,13 @@ export async function sellerAuditListings(
       category_id: item.category_id ?? null,
     };
     try {
-      const health = await sellerGetListingHealth(client, {
+      const performance = await sellerGetListingHealth(client, {
         item_id: item.id,
         seller_id: sellerId,
       });
-      entry.health = (health as { health: unknown }).health;
+      entry.performance = (performance as { performance: unknown }).performance;
     } catch (error) {
-      entry.health_error = error instanceof Error ? error.message : String(error);
+      entry.performance_error = error instanceof Error ? error.message : String(error);
     }
     if (typeof item.category_id === "string") {
       try {

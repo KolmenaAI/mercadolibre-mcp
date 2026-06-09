@@ -292,7 +292,7 @@ export function registerSellerMercadoLibreTools(server: McpServer, tools: Tools)
 
   server.tool(
     "seller_get_listing_health",
-    "Listing quality / health for your item (GET /items/{id}/health).",
+    "Listing quality for your item (GET /item/{id}/performance): score 0-100, level, and opportunities/warnings. Replaces the discontinued /health endpoint.",
     {
       item_id: z.string(),
       seller_id: z.number().optional(),

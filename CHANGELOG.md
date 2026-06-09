@@ -1,5 +1,14 @@
 # Changelog — @kolmena-ai/meli-mcp
 
+## 1.10.1
+
+### Fix `seller_get_listing_health` / `seller_audit_listings` — migrate off the discontinued `/health` endpoint
+
+`seller_get_listing_health` called `GET /items/{id}/health`, which Mercado Libre **discontinued (Feb 2026)**. For marketplace (`buy_it_now`) items the endpoint now returns `404 "Items with buying mode 'buy_it_now' are not allowed"`, so every health lookup failed and `seller_audit_listings` reported a `health_error` per item. This had nothing to do with the listing's state (catalog linkage, free shipping, etc.) — the endpoint was simply gone.
+
+- **`seller_get_listing_health` now calls `GET /item/{id}/performance`** (note the singular `/item/`), the replacement ML groups all listing-quality data into: `score` (0-100), `level` / `level_wording` (Básica / Estándar / Profesional), and `buckets[]` of per-area `OPPORTUNITY`/`WARNING` actions (title, pictures, GTIN, technical specs, …). The tool name and arguments are unchanged; the result now carries `performance` instead of `health`.
+- **`seller_audit_listings`** consumes the same function, so it returns `performance` (and `performance_error` on failure) per item and works again.
+
 ## 1.10.0
 
 ### Add `get_listing_offer` — price/shipping for a single pasted listing

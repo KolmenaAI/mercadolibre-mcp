@@ -218,8 +218,8 @@ Upstream `@dan1d/mercadolibre-mcp@1.0.2` shipped 8 buyer-only tools. This fork s
 | `seller_get_my_item_description` | Description for your listing. |
 | `seller_get_store_snapshot` | Daily store summary: account, recent orders, unanswered questions, low stock. |
 | `seller_inventory_report` | Low stock, fast sellers, and dead stock. |
-| `seller_audit_listings` | Audit active listings: health, title length, category attributes sample. |
-| `seller_get_listing_health` | Listing quality / health (`GET /items/{id}/health`). |
+| `seller_audit_listings` | Audit active listings: quality (performance), title length, category attributes sample. |
+| `seller_get_listing_health` | Listing quality (`GET /item/{id}/performance`): score, level, opportunities/warnings. |
 | `seller_get_item_visits` | Visit metrics (last 30 days by default). |
 | `seller_list_performance_rankings` | Rank listings by sold quantity, visits, or stock. |
 | `seller_get_item_price_to_win` | Catalog competition price hint. |
