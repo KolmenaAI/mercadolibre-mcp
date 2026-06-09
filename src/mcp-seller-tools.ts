@@ -457,7 +457,7 @@ export function registerSellerMercadoLibreTools(server: McpServer, tools: Tools)
 
   server.tool(
     "seller_update_my_item",
-    "Update price, stock, or status (PUT /items/{id}). Listings with variations/user_product_id need price/stock on the variation (auto if only one). Status uses item root.",
+    "Update price, stock, or status only (PUT /items/{id}). Does NOT add pictures — use seller_add_listing_pictures. Variation-aware for price/stock.",
     {
       item_id: z.string(),
       price: z.number().optional(),
@@ -481,6 +481,28 @@ export function registerSellerMercadoLibreTools(server: McpServer, tools: Tools)
       seller_id: z.number().optional(),
     },
     async (params) => toolResult(() => tools.seller_update_my_item_description(params))()
+  );
+
+  server.tool(
+    "seller_add_listing_pictures",
+    "Add or replace pictures on an existing listing (PUT /items/{id} pictures[]). Default add mode merges new picture_ids with existing ones (ML requires keeping current ids). Upload first with seller_upload_listing_picture.",
+    {
+      item_id: z.string(),
+      picture_ids: z
+        .array(z.string())
+        .optional()
+        .describe("New ids from seller_upload_listing_picture — appended to existing by default"),
+      picture_sources: z
+        .array(z.string())
+        .optional()
+        .describe("Public HTTPS URLs as { source } — appended to existing by default"),
+      replace_pictures: z
+        .boolean()
+        .optional()
+        .describe("When true, set pictures to only the ids/sources provided (omit to append)"),
+      seller_id: z.number().optional(),
+    },
+    async (params) => toolResult(() => tools.seller_add_listing_pictures(params))()
   );
 
   server.tool(
@@ -586,7 +608,7 @@ export function registerSellerMercadoLibreTools(server: McpServer, tools: Tools)
 
   server.tool(
     "seller_upload_listing_picture",
-    "Upload image to seller library (not tied to an item). Returns picture_id — pass it in seller_create_listing.picture_ids.",
+    "Upload image to seller library (not tied to an item). Returns picture_id — use seller_add_listing_pictures for existing listings, or seller_create_listing.picture_ids for new ones.",
     {
       image_url: z.string().describe("Public HTTPS URL the server can download"),
     },

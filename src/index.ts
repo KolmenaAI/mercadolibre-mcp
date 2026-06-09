@@ -64,6 +64,7 @@ import {
   sellerGetPackMessages,
   sellerUpdateMyItem,
   sellerUpdateMyItemDescription,
+  sellerAddListingPictures,
   sellerSearchClaims,
   sellerGetClaim,
   sellerGetClaimReturns,
@@ -138,6 +139,7 @@ import type {
   SellerGetPackMessagesParams,
   SellerUpdateMyItemParams,
   SellerUpdateMyItemDescriptionParams,
+  SellerAddListingPicturesParams,
   SellerSearchClaimsParams,
   SellerGetClaimParams,
   SellerGetClaimReturnsParams,
@@ -257,6 +259,8 @@ export function createMercadoLibreTools(accessToken?: string) {
         sellerUpdateMyItem(client, params),
       seller_update_my_item_description: (params: SellerUpdateMyItemDescriptionParams) =>
         sellerUpdateMyItemDescription(client, params),
+      seller_add_listing_pictures: (params: SellerAddListingPicturesParams) =>
+        sellerAddListingPictures(client, params),
       seller_search_claims: (params: SellerSearchClaimsParams) =>
         sellerSearchClaims(client, params),
       seller_get_claim: (params: SellerGetClaimParams) => sellerGetClaim(client, params),

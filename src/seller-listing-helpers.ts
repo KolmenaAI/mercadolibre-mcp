@@ -55,6 +55,58 @@ export function buildListingPictures(
   return pictures.length > 0 ? pictures : undefined;
 }
 
+/** Existing picture ids on an item (from GET /items/{id}.pictures). */
+export function extractItemPictureRefs(
+  item: Record<string, unknown>
+): MercadoLibreListingPictureRef[] {
+  const raw = item.pictures;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  const refs: MercadoLibreListingPictureRef[] = [];
+  for (const row of raw) {
+    if (row === null || typeof row !== "object") {
+      continue;
+    }
+    const pic = row as Record<string, unknown>;
+    if (typeof pic.id === "string" && pic.id.trim() !== "") {
+      refs.push({ id: pic.id.trim() });
+    }
+  }
+  return refs;
+}
+
+/** Append new picture ids/sources to existing refs (dedupe by id). */
+export function mergeListingPictures(
+  existing: MercadoLibreListingPictureRef[],
+  pictureSources?: string[],
+  pictureIds?: string[]
+): MercadoLibreListingPictureRef[] {
+  const merged: MercadoLibreListingPictureRef[] = [...existing];
+  const seenIds = new Set(
+    existing.map((pic) => pic.id).filter((id): id is string => typeof id === "string")
+  );
+
+  if (pictureIds) {
+    for (const id of pictureIds) {
+      const trimmed = id.trim();
+      if (trimmed !== "" && !seenIds.has(trimmed)) {
+        merged.push({ id: trimmed });
+        seenIds.add(trimmed);
+      }
+    }
+  }
+  if (pictureSources) {
+    for (const source of pictureSources) {
+      const trimmed = source.trim();
+      if (trimmed !== "") {
+        merged.push({ source: trimmed });
+      }
+    }
+  }
+  return merged;
+}
+
 export function buildCreateItemBody(
   params: SellerCreateListingParams | SellerValidateListingParams
 ): MercadoLibreCreateItemBody {

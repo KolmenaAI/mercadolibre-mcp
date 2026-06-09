@@ -1,5 +1,17 @@
 # Changelog — @kolmena-ai/meli-mcp
 
+## 1.10.2
+
+### Add `seller_add_listing_pictures` — attach uploaded images to existing listings
+
+Mateo (and other seller agents) could upload images via `seller_upload_listing_picture` but had no way to attach them to an **existing** ad. Calling `seller_update_my_item` with `picture_ids` failed with *"Provide at least one of price, available_quantity, or status to update"* because that tool only handles price/stock/status.
+
+Mercado Libre attaches pictures to active listings via `PUT /items/{id}` with a `pictures[]` array. When **adding** images you must send **existing picture ids plus the new ones** — omitting current ids drops them from the listing.
+
+- **New tool `seller_add_listing_pictures`** — default **add** mode reads the item's current `pictures`, merges in new `picture_ids` (from upload) and/or `picture_sources` (HTTPS URLs), and PUTs the combined array. Optional `replace_pictures: true` to set the full set explicitly.
+- **`seller_update_my_item`** description clarified: price/stock/status only — **not** pictures.
+- **`seller_upload_listing_picture`** description updated to point at `seller_add_listing_pictures` for existing listings.
+
 ## 1.10.1
 
 ### Fix `seller_get_listing_health` / `seller_audit_listings` — migrate off the discontinued `/health` endpoint

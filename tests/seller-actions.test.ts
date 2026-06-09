@@ -11,6 +11,7 @@ import {
   sellerAnswerQuestion,
   sellerGetStoreSnapshot,
   sellerGetListingHealth,
+  sellerAddListingPictures,
   sellerInventoryReport,
   sellerUpdateMyItem,
   sellerUploadListingPicture,
@@ -345,6 +346,34 @@ describe("seller-actions", () => {
       const perfUrl = mockFetch.mock.calls[2][0] as string;
       expect(perfUrl).toContain("/item/MLA999/performance");
       expect(perfUrl).not.toContain("/items/MLA999/health");
+    });
+  });
+
+  describe("sellerAddListingPictures", () => {
+    it("PUTs merged existing + new picture ids (not seller_update_my_item)", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ id: 10 }));
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({
+          id: "MLA999",
+          seller_id: 10,
+          pictures: [{ id: "existing-pic" }],
+        })
+      );
+      mockFetch.mockResolvedValueOnce(jsonResponse({ id: "MLA999", pictures: [] }));
+
+      const result = await sellerAddListingPictures(client, {
+        item_id: "MLA999",
+        picture_ids: ["625657-MLA112981342193_062026"],
+      });
+      expect(result).toMatchObject({
+        api: "PUT /items/{id} (pictures)",
+        mode: "add",
+        added_picture_ids: ["625657-MLA112981342193_062026"],
+      });
+      const putInit = mockFetch.mock.calls[2][1] as RequestInit;
+      expect(JSON.parse(putInit.body as string)).toEqual({
+        pictures: [{ id: "existing-pic" }, { id: "625657-MLA112981342193_062026" }],
+      });
     });
   });
 

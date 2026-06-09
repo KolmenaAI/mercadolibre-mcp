@@ -252,10 +252,11 @@ Upstream `@dan1d/mercadolibre-mcp@1.0.2` shipped 8 buyer-only tools. This fork s
 
 | Tool | Description |
 |------|-------------|
-| `seller_update_my_item` | Update price, stock, or status (`PUT /items/{id}`). Variation-aware. |
+| `seller_update_my_item` | Update price, stock, or status (`PUT /items/{id}`). Variation-aware. **Not for pictures.** |
+| `seller_add_listing_pictures` | Add/replace pictures on an existing listing. Merges new ids with existing by default. |
 | `seller_update_my_item_description` | Update listing description plain text. |
 | `seller_get_listing_requirements` | Required category attributes + publish checklist. |
-| `seller_upload_listing_picture` | Upload image to seller library; returns `picture_id`. |
+| `seller_upload_listing_picture` | Upload to seller library → `picture_id`. Pair with `seller_add_listing_pictures` (existing ad) or `seller_create_listing` (new). |
 | `seller_validate_listing` | Dry-run `POST /items/validate`. |
 | `seller_create_listing` | Publish a live listing (`POST /items`). |
 

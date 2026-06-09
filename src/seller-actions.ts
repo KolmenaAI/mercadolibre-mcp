@@ -48,6 +48,7 @@ import type {
   SellerSearchClaimsParams,
   SellerSearchOrdersParams,
   SellerSubmitClaimActionParams,
+  SellerAddListingPicturesParams,
   SellerUpdateMyItemDescriptionParams,
   SellerUpdateMyItemParams,
   SellerUploadListingPictureParams,
@@ -55,6 +56,9 @@ import type {
 } from "./seller-schemas.js";
 import {
   buildCreateItemBody,
+  buildListingPictures,
+  extractItemPictureRefs,
+  mergeListingPictures,
   type CategoryAttributeDefinition,
   guessImageFilename,
   parseListingValidationResponse,
@@ -646,6 +650,60 @@ export async function sellerUpdateMyItemDescription(
     item_id: params.item_id,
     result,
   };
+}
+
+export async function sellerAddListingPictures(
+  client: MercadoLibreClient,
+  params: SellerAddListingPicturesParams
+): Promise<unknown> {
+  const sellerId = await resolveSellerId(client, params.seller_id);
+  const item = await assertMyItem(client, params.item_id, sellerId);
+  const itemRecord = item as Record<string, unknown>;
+
+  const newIds = params.picture_ids ?? [];
+  const newSources = params.picture_sources ?? [];
+  if (newIds.length === 0 && newSources.length === 0) {
+    throw new Error("Provide at least one picture_id or picture_source to add");
+  }
+
+  let pictures;
+  if (params.replace_pictures) {
+    pictures = buildListingPictures(newSources, newIds);
+  } else {
+    const existing = extractItemPictureRefs(itemRecord);
+    pictures = mergeListingPictures(existing, newSources, newIds);
+  }
+
+  if (!pictures || pictures.length === 0) {
+    throw new Error("No pictures to set on item");
+  }
+
+  try {
+    const result = await client.put(
+      `/items/${encodeURIComponent(params.item_id)}`,
+      { pictures } as unknown as Record<
+        string,
+        string | number | boolean | null | Record<string, unknown>
+      >
+    );
+    return {
+      api: "PUT /items/{id} (pictures)",
+      seller_id: sellerId,
+      item_id: params.item_id,
+      mode: params.replace_pictures ? "replace" : "add",
+      existing_picture_count: extractItemPictureRefs(itemRecord).length,
+      pictures_sent: pictures,
+      added_picture_ids: newIds,
+      result,
+    };
+  } catch (error) {
+    if (error instanceof MercadoLibreError) {
+      throw new Error(
+        `${error.message}\n\nMercado Libre requires sending existing picture ids plus new ones when adding. This tool merges them automatically.\n\nRequest body sent:\n${JSON.stringify({ pictures }, null, 2)}`
+      );
+    }
+    throw error;
+  }
 }
 
 export async function sellerSearchClaims(

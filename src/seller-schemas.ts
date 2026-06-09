@@ -165,6 +165,17 @@ export interface SellerUpdateMyItemDescriptionParams {
   seller_id?: number;
 }
 
+export interface SellerAddListingPicturesParams {
+  item_id: string;
+  /** New picture ids from seller_upload_listing_picture (appended to existing by default). */
+  picture_ids?: string[];
+  /** Optional public HTTPS URLs added as { source } (appended to existing by default). */
+  picture_sources?: string[];
+  /** When true, replace the full pictures array instead of appending. */
+  replace_pictures?: boolean;
+  seller_id?: number;
+}
+
 export interface SellerGetOrderDiscountsParams {
   order_id: number;
 }
