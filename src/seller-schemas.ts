@@ -140,6 +140,8 @@ export interface SellerListMessagePacksParams {
 export interface SellerGetPackMessagesParams {
   pack_id: string;
   seller_id?: number;
+  /** Default false — reading a pack marks messages read unless explicitly true. */
+  mark_as_read?: boolean;
 }
 
 export interface SellerItemVariationSummary {

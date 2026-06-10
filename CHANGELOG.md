@@ -1,5 +1,14 @@
 # Changelog — @kolmena-ai/meli-mcp
 
+## 1.10.5
+
+### Fix post-sale messages endpoints (`seller_list_message_packs`, `seller_get_pack_messages`)
+
+`GET /marketplace/messages/pending` is not in current Mercado Libre docs and returns 403 for domestic MLA sellers.
+
+- **`seller_list_message_packs`** — now calls `GET /messages/unread?role=seller&tag=post_sale` (domestic). Falls back to `GET /marketplace/messages/unread` for Global Selling sellers. Clearer unavailable message (incl. Model 6 block).
+- **`seller_get_pack_messages`** — fixed path to `GET /messages/packs/{pack_id}/sellers/{seller_id}?tag=post_sale` (was wrong `/messages/packs/{id}/messages`). Default `mark_as_read=false`.
+
 ## 1.10.4
 
 ### Add `seller_create_catalog_listing` — catalog opt-in (POST /items/catalog_listings)

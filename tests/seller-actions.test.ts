@@ -13,6 +13,8 @@ import {
   sellerGetListingHealth,
   sellerAddListingPictures,
   sellerCreateCatalogListing,
+  sellerListMessagePacks,
+  sellerGetPackMessages,
   sellerInventoryReport,
   sellerUpdateMyItem,
   sellerUploadListingPicture,
@@ -428,6 +430,78 @@ describe("seller-actions", () => {
           catalog_product_id: "MLA27172665",
         })
       ).rejects.toThrow(/already a catalog listing/);
+    });
+  });
+
+  describe("sellerListMessagePacks", () => {
+    it("calls GET /messages/unread for domestic sellers", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ id: 10 }));
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({
+          userId: 10,
+          results: [{ resource: "/packs/2000000089077943", count: 1 }],
+        })
+      );
+
+      const result = await sellerListMessagePacks(client, {});
+      expect(result).toMatchObject({
+        api: "GET /messages/unread?role=seller&tag=post_sale",
+        seller_id: 10,
+      });
+      const url = mockFetch.mock.calls[1][0] as string;
+      expect(url).toContain("/messages/unread");
+      expect(url).toContain("role=seller");
+      expect(url).toContain("tag=post_sale");
+      expect(url).not.toContain("/marketplace/");
+    });
+
+    it("falls back to marketplace/messages/unread when domestic returns 403", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ id: 10 }));
+      mockFetch.mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: "Forbidden" }), {
+          status: 403,
+          headers: { "Content-Type": "application/json" },
+        })
+      );
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({
+          userId: 10,
+          results: [{ resource: "/packs/999", count: 2 }],
+        })
+      );
+
+      const result = await sellerListMessagePacks(client, {});
+      expect(result).toMatchObject({
+        api: "GET /marketplace/messages/unread?role=seller&tag=post_sale",
+        seller_id: 10,
+      });
+      const marketplaceUrl = mockFetch.mock.calls[2][0] as string;
+      expect(marketplaceUrl).toContain("/marketplace/messages/unread");
+      expect(marketplaceUrl).toContain("user_id=10");
+    });
+  });
+
+  describe("sellerGetPackMessages", () => {
+    it("reads pack thread with mark_as_read=false by default", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ id: 10 }));
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({
+          messages: [{ id: "msg-1", text: "Hola" }],
+          paging: { total: 1 },
+        })
+      );
+
+      const result = await sellerGetPackMessages(client, { pack_id: "2000000089077943" });
+      expect(result).toMatchObject({
+        api: "GET /messages/packs/{pack_id}/sellers/{seller_id}?tag=post_sale&mark_as_read=false",
+        pack_id: "2000000089077943",
+        seller_id: 10,
+      });
+      const url = mockFetch.mock.calls[1][0] as string;
+      expect(url).toContain("/messages/packs/2000000089077943/sellers/10");
+      expect(url).toContain("tag=post_sale");
+      expect(url).toContain("mark_as_read=false");
+      expect(url).not.toContain("/packs/2000000089077943/messages");
     });
   });
 

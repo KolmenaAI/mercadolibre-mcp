@@ -246,8 +246,8 @@ Upstream `@dan1d/mercadolibre-mcp@1.0.2` shipped 8 buyer-only tools. This fork s
 | `seller_list_my_item_questions` | All questions on one of your listings. |
 | `seller_get_question` | Single question by id. |
 | `seller_answer_question` | Post an answer (max 2000 chars). |
-| `seller_list_message_packs` | Pending post-sale message packs. |
-| `seller_get_pack_messages` | Messages in a post-sale pack. |
+| `seller_list_message_packs` | Unread post-sale packs (`GET /messages/unread?role=seller&tag=post_sale`). |
+| `seller_get_pack_messages` | Thread for a pack (`GET /messages/packs/{id}/sellers/{seller_id}?tag=post_sale`). |
 
 ### Seller — listing mutations
 

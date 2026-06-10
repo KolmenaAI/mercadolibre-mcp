@@ -454,20 +454,21 @@ export function registerSellerMercadoLibreTools(server: McpServer, tools: Tools)
 
   server.tool(
     "seller_list_message_packs",
-    "Pending post-sale message packs (if API scope allows).",
+    "Unread post-sale message packs. Domestic sellers: GET /messages/unread?role=seller&tag=post_sale. Global Selling fallback: GET /marketplace/messages/unread.",
     {
       seller_id: z.number().optional(),
-      limit: z.number().optional(),
+      limit: z.number().optional().describe("Max packs returned (client-side trim of results[])"),
     },
     async (params) => toolResult(() => tools.seller_list_message_packs(params))()
   );
 
   server.tool(
     "seller_get_pack_messages",
-    "Messages in a post-sale pack.",
+    "Messages in a post-sale pack (GET /messages/packs/{id}/sellers/{seller_id}?tag=post_sale). Default mark_as_read=false so listing unread packs does not mark them read.",
     {
       pack_id: z.string(),
       seller_id: z.number().optional(),
+      mark_as_read: z.boolean().optional(),
     },
     async (params) => toolResult(() => tools.seller_get_pack_messages(params))()
   );

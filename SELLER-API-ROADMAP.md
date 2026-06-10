@@ -64,8 +64,8 @@ Non-ML: social publish, ads, CRM, approvals → Kolmena plugins / other integrat
 | `seller_list_orders_by_status` | `orders/search` filtered |
 | `seller_find_shipping_exceptions` | composite |
 | `seller_list_pending_shipments` | composite |
-| `seller_list_message_packs` | `GET /marketplace/messages/pending` |
-| `seller_get_pack_messages` | `GET /messages/packs/{id}/messages` |
+| `seller_list_message_packs` | `GET /messages/unread?role=seller&tag=post_sale` (domestic); `GET /marketplace/messages/unread` (global selling) |
+| `seller_get_pack_messages` | `GET /messages/packs/{id}/sellers/{seller_id}?tag=post_sale` |
 | `seller_update_my_item` | `PUT /items/{id}` |
 | `seller_update_my_item_description` | `PUT /items/{id}/description` |
 

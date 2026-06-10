@@ -547,27 +547,61 @@ export async function sellerListMessagePacks(
   params: SellerListMessagePacksParams
 ): Promise<unknown> {
   const sellerId = await resolveSellerId(client, params.seller_id);
-  const qp: Record<string, string> = {
-    limit: String(Math.min(params.limit ?? 20, 50)),
+  const maxResults = params.limit !== undefined ? Math.min(params.limit, 50) : undefined;
+
+  const trimUnreadResults = (raw: unknown): unknown => {
+    if (maxResults === undefined || typeof raw !== "object" || raw === null) {
+      return raw;
+    }
+    const record = raw as Record<string, unknown>;
+    const results = record.results;
+    if (!Array.isArray(results) || results.length <= maxResults) {
+      return raw;
+    }
+    return { ...record, results: results.slice(0, maxResults) };
   };
+
   try {
-    const result = await client.get("/marketplace/messages/pending", qp);
+    const result = await client.get("/messages/unread", {
+      role: "seller",
+      tag: "post_sale",
+    });
     return {
-      api: "GET /marketplace/messages/pending",
+      api: "GET /messages/unread?role=seller&tag=post_sale",
       seller_id: sellerId,
-      result,
+      result: trimUnreadResults(result),
     };
   } catch (error) {
-    if (error instanceof MercadoLibreError && (error.status === 403 || error.status === 404)) {
-      return {
-        api: "GET /marketplace/messages/pending",
-        seller_id: sellerId,
-        unavailable: true,
-        status: error.status,
-        message: "Messages API not available for this app. Check OAuth scopes.",
-      };
+    if (!(error instanceof MercadoLibreError) || (error.status !== 403 && error.status !== 404)) {
+      throw error;
     }
-    throw error;
+    try {
+      const result = await client.get("/marketplace/messages/unread", {
+        role: "seller",
+        tag: "post_sale",
+        user_id: String(sellerId),
+      });
+      return {
+        api: "GET /marketplace/messages/unread?role=seller&tag=post_sale",
+        seller_id: sellerId,
+        result: trimUnreadResults(result),
+      };
+    } catch (marketplaceError) {
+      if (
+        marketplaceError instanceof MercadoLibreError &&
+        (marketplaceError.status === 403 || marketplaceError.status === 404)
+      ) {
+        return {
+          api: "GET /messages/unread (domestic) | GET /marketplace/messages/unread (global selling)",
+          seller_id: sellerId,
+          unavailable: true,
+          status: marketplaceError.status,
+          message:
+            "Post-sale messages API unavailable for this seller. Domestic sellers use GET /messages/unread; Global Selling uses GET /marketplace/messages/unread. Model 6 sellers are blocked by Mercado Libre (403).",
+        };
+      }
+      throw marketplaceError;
+    }
   }
 }
 
@@ -575,10 +609,22 @@ export async function sellerGetPackMessages(
   client: MercadoLibreClient,
   params: SellerGetPackMessagesParams
 ): Promise<unknown> {
-  await resolveSellerId(client, params.seller_id);
-  return client.get(
-    `/messages/packs/${encodeURIComponent(params.pack_id)}/messages`
+  const sellerId = await resolveSellerId(client, params.seller_id);
+  const markAsRead = params.mark_as_read === true ? "true" : "false";
+  const qp: Record<string, string> = {
+    tag: "post_sale",
+    mark_as_read: markAsRead,
+  };
+  const result = await client.get(
+    `/messages/packs/${encodeURIComponent(params.pack_id)}/sellers/${encodeURIComponent(String(sellerId))}`,
+    qp
   );
+  return {
+    api: `GET /messages/packs/{pack_id}/sellers/{seller_id}?tag=post_sale&mark_as_read=${markAsRead}`,
+    seller_id: sellerId,
+    pack_id: params.pack_id,
+    result,
+  };
 }
 
 interface ItemVariationRow {
