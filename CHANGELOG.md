@@ -1,5 +1,14 @@
 # Changelog — @kolmena-ai/meli-mcp
 
+## 1.10.4
+
+### Add `seller_create_catalog_listing` — catalog opt-in (POST /items/catalog_listings)
+
+Traditional marketplace items with `catalog_product_id` are not yet competing on the catalog product page — `seller_get_item_price_to_win` returns `item_not_opted_in` until the seller opts in.
+
+- **New tool `seller_create_catalog_listing`** — `POST /items/catalog_listings` with `item_id` + `catalog_product_id` (+ optional `variation_id` when 2+ variations; auto-selected when only one). Returns `catalog_listing_id` to use with `seller_get_item_price_to_win`. Requires explicit seller approval in agent skills.
+- **`seller_get_item_price_to_win`** now calls `?version=v2` per ML catalog competition docs.
+
 ## 1.10.3
 
 ### Fix `seller_add_listing_pictures` — variations + post-PUT verification

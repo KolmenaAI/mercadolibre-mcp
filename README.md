@@ -222,7 +222,8 @@ Upstream `@dan1d/mercadolibre-mcp@1.0.2` shipped 8 buyer-only tools. This fork s
 | `seller_get_listing_health` | Listing quality (`GET /item/{id}/performance`): score, level, opportunities/warnings. |
 | `seller_get_item_visits` | Visit metrics (last 30 days by default). |
 | `seller_list_performance_rankings` | Rank listings by sold quantity, visits, or stock. |
-| `seller_get_item_price_to_win` | Catalog competition price hint. |
+| `seller_get_item_price_to_win` | Catalog competition price hint (`?version=v2`; catalog listing ids only). |
+| `seller_create_catalog_listing` | Opt in marketplace item to catalog competition (`POST /items/catalog_listings`). |
 
 ### Seller — orders & shipments
 

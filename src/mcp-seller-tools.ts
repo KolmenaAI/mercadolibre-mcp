@@ -384,12 +384,29 @@ export function registerSellerMercadoLibreTools(server: McpServer, tools: Tools)
 
   server.tool(
     "seller_get_item_price_to_win",
-    "Catalog competition price hint for your listing.",
+    "Catalog competition price hint (GET /items/{id}/price_to_win?version=v2). Only works on catalog listings after opt-in — not traditional marketplace items.",
     {
       item_id: z.string(),
       seller_id: z.number().optional(),
     },
     async (params) => toolResult(() => tools.seller_get_item_price_to_win(params))()
+  );
+
+  server.tool(
+    "seller_create_catalog_listing",
+    "Opt in a traditional marketplace item to catalog competition (POST /items/catalog_listings). Creates a new catalog_listing id — use that id with seller_get_item_price_to_win. Requires seller approval. Pass variation_id when the item has 2+ variations (auto-selected when only one).",
+    {
+      item_id: z.string().describe("Source marketplace item id to opt in from"),
+      catalog_product_id: z
+        .string()
+        .describe("Catalog product id e.g. MLA27172665 (from get_product or item.catalog_product_id)"),
+      variation_id: z
+        .number()
+        .optional()
+        .describe("Required when item has 2+ variations; auto when only one"),
+      seller_id: z.number().optional(),
+    },
+    async (params) => toolResult(() => tools.seller_create_catalog_listing(params))()
   );
 
   server.tool(

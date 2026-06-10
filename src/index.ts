@@ -56,6 +56,7 @@ import {
   sellerListPromotions,
   sellerGetPromotion,
   sellerGetItemPriceToWin,
+  sellerCreateCatalogListing,
   sellerListPerformanceRankings,
   sellerListOrdersByStatus,
   sellerFindShippingExceptions,
@@ -131,6 +132,7 @@ import type {
   SellerListPromotionsParams,
   SellerGetPromotionParams,
   SellerGetItemPriceToWinParams,
+  SellerCreateCatalogListingParams,
   SellerListPerformanceRankingsParams,
   SellerListOrdersByStatusParams,
   SellerFindShippingExceptionsParams,
@@ -243,6 +245,8 @@ export function createMercadoLibreTools(accessToken?: string) {
         sellerGetPromotion(client, params),
       seller_get_item_price_to_win: (params: SellerGetItemPriceToWinParams) =>
         sellerGetItemPriceToWin(client, params),
+      seller_create_catalog_listing: (params: SellerCreateCatalogListingParams) =>
+        sellerCreateCatalogListing(client, params),
       seller_list_performance_rankings: (params: SellerListPerformanceRankingsParams) =>
         sellerListPerformanceRankings(client, params),
       seller_list_orders_by_status: (params: SellerListOrdersByStatusParams) =>

@@ -176,6 +176,16 @@ export interface SellerAddListingPicturesParams {
   seller_id?: number;
 }
 
+export interface SellerCreateCatalogListingParams {
+  /** Traditional marketplace item to opt in from. */
+  item_id: string;
+  /** Catalog product id (e.g. MLA27172665 from get_product or item.catalog_product_id). */
+  catalog_product_id: string;
+  /** Required when item_id has multiple variations — one catalog listing per variation. */
+  variation_id?: number;
+  seller_id?: number;
+}
+
 export interface SellerGetOrderDiscountsParams {
   order_id: number;
 }

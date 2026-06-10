@@ -50,6 +50,7 @@ import type {
   SellerSearchOrdersParams,
   SellerSubmitClaimActionParams,
   SellerAddListingPicturesParams,
+  SellerCreateCatalogListingParams,
   SellerUpdateMyItemDescriptionParams,
   SellerUpdateMyItemParams,
   SellerUploadListingPictureParams,
@@ -426,14 +427,107 @@ export async function sellerGetItemPriceToWin(
   const sellerId = await resolveSellerId(client, params.seller_id);
   await assertMyItem(client, params.item_id, sellerId);
   const result = await client.get(
-    `/items/${encodeURIComponent(params.item_id)}/price_to_win`
+    `/items/${encodeURIComponent(params.item_id)}/price_to_win`,
+    { version: "v2" }
   );
   return {
-    api: "GET /items/{id}/price_to_win",
+    api: "GET /items/{id}/price_to_win?version=v2",
     seller_id: sellerId,
     item_id: params.item_id,
     result,
   };
+}
+
+export async function sellerCreateCatalogListing(
+  client: MercadoLibreClient,
+  params: SellerCreateCatalogListingParams
+): Promise<unknown> {
+  const sellerId = await resolveSellerId(client, params.seller_id);
+  const item = await assertMyItem(client, params.item_id, sellerId);
+  const itemRecord = item as Record<string, unknown>;
+  const catalogProductId = params.catalog_product_id.trim();
+
+  if (isCatalogManagedListing(itemRecord)) {
+    throw new Error(
+      `Item ${params.item_id} is already a catalog listing (catalog_listing). Use seller_get_item_price_to_win on this id — do not opt in again.`
+    );
+  }
+
+  const itemCatalogProductId =
+    typeof item.catalog_product_id === "string" ? item.catalog_product_id : null;
+  const catalogMismatchNote =
+    itemCatalogProductId !== null && itemCatalogProductId !== catalogProductId
+      ? `Note: marketplace item has catalog_product_id ${itemCatalogProductId} but you sent ${catalogProductId}. ML may reject if they do not match.`
+      : null;
+
+  const rawVariations = itemRecord.variations;
+  const variationRows: Array<Record<string, unknown>> = Array.isArray(rawVariations)
+    ? rawVariations.filter(
+        (row): row is Record<string, unknown> => row !== null && typeof row === "object"
+      )
+    : [];
+  const variationIds = variationRows
+    .map((row) => Number(row.id))
+    .filter((id) => Number.isFinite(id));
+
+  let variationId = params.variation_id;
+  if (variationRows.length > 1 && variationId === undefined) {
+    throw new Error(
+      `Item has ${variationRows.length} variations; pass variation_id for the SKU/color to opt in. Available: ${variationIds.join(", ")}. Call once per variation.`
+    );
+  }
+  if (variationRows.length === 1 && variationId === undefined) {
+    variationId = variationIds[0];
+  }
+  if (variationId !== undefined && !variationIds.includes(variationId)) {
+    throw new Error(
+      `variation_id ${variationId} not found on item ${params.item_id}. Available: ${variationIds.join(", ") || "none"}`
+    );
+  }
+
+  const body: Record<string, string | number> = {
+    item_id: params.item_id.trim(),
+    catalog_product_id: catalogProductId,
+  };
+  if (variationId !== undefined) {
+    body.variation_id = variationId;
+  }
+
+  try {
+    const created = await client.postJson<{
+      id?: string;
+      permalink?: string;
+      catalog_listing?: boolean;
+      catalog_product_id?: string;
+      status?: string;
+      title?: string;
+    }>("/items/catalog_listings", body);
+
+    const catalogListingId = typeof created.id === "string" ? created.id : null;
+    return {
+      api: "POST /items/catalog_listings",
+      seller_id: sellerId,
+      source_item_id: params.item_id,
+      catalog_product_id: catalogProductId,
+      variation_id: variationId ?? null,
+      catalog_listing_id: catalogListingId,
+      permalink: created.permalink ?? null,
+      catalog_listing: created.catalog_listing ?? true,
+      status: created.status ?? null,
+      title: created.title ?? null,
+      note:
+        "Use catalog_listing_id (not the source marketplace item_id) with seller_get_item_price_to_win for catalog competition pricing.",
+      catalog_product_id_mismatch_note: catalogMismatchNote,
+      result: created,
+    };
+  } catch (error) {
+    if (error instanceof MercadoLibreError) {
+      throw new Error(
+        `${error.message}${catalogMismatchNote ? `\n\n${catalogMismatchNote}` : ""}\n\nRequest body sent:\n${JSON.stringify(body, null, 2)}`
+      );
+    }
+    throw error;
+  }
 }
 
 export async function sellerListOrdersByStatus(

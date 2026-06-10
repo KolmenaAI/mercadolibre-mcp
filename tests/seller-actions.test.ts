@@ -12,6 +12,7 @@ import {
   sellerGetStoreSnapshot,
   sellerGetListingHealth,
   sellerAddListingPictures,
+  sellerCreateCatalogListing,
   sellerInventoryReport,
   sellerUpdateMyItem,
   sellerUploadListingPicture,
@@ -346,6 +347,87 @@ describe("seller-actions", () => {
       const perfUrl = mockFetch.mock.calls[2][0] as string;
       expect(perfUrl).toContain("/item/MLA999/performance");
       expect(perfUrl).not.toContain("/items/MLA999/health");
+    });
+  });
+
+  describe("sellerCreateCatalogListing", () => {
+    it("POSTs catalog opt-in and returns catalog_listing_id", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ id: 10 }));
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({
+          id: "MLA1804775783",
+          seller_id: 10,
+          catalog_product_id: "MLA27172665",
+          catalog_listing: false,
+        })
+      );
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({
+          id: "MLA999888777",
+          permalink: "https://articulo.mercadolibre.com.ar/MLA999888777",
+          catalog_listing: true,
+          status: "active",
+          title: "iPhone 15 Catalog",
+        })
+      );
+
+      const result = await sellerCreateCatalogListing(client, {
+        item_id: "MLA1804775783",
+        catalog_product_id: "MLA27172665",
+      });
+      expect(result).toMatchObject({
+        api: "POST /items/catalog_listings",
+        source_item_id: "MLA1804775783",
+        catalog_listing_id: "MLA999888777",
+      });
+      const postInit = mockFetch.mock.calls[2][1] as RequestInit;
+      expect(JSON.parse(postInit.body as string)).toEqual({
+        item_id: "MLA1804775783",
+        catalog_product_id: "MLA27172665",
+      });
+      const postUrl = mockFetch.mock.calls[2][0] as string;
+      expect(postUrl).toContain("/items/catalog_listings");
+    });
+
+    it("includes variation_id when item has multiple variations", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ id: 10 }));
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({
+          id: "MLA1",
+          seller_id: 10,
+          variations: [{ id: 100 }, { id: 200 }],
+        })
+      );
+      mockFetch.mockResolvedValueOnce(jsonResponse({ id: "MLA-CAT-1", catalog_listing: true }));
+
+      await sellerCreateCatalogListing(client, {
+        item_id: "MLA1",
+        catalog_product_id: "MLA27172665",
+        variation_id: 200,
+      });
+
+      const postInit = mockFetch.mock.calls[2][1] as RequestInit;
+      expect(JSON.parse(postInit.body as string)).toMatchObject({
+        variation_id: 200,
+      });
+    });
+
+    it("rejects when item is already a catalog listing", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ id: 10 }));
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({
+          id: "MLA-CAT",
+          seller_id: 10,
+          catalog_listing: true,
+        })
+      );
+
+      await expect(
+        sellerCreateCatalogListing(client, {
+          item_id: "MLA-CAT",
+          catalog_product_id: "MLA27172665",
+        })
+      ).rejects.toThrow(/already a catalog listing/);
     });
   });
 
