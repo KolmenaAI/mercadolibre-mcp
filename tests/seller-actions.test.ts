@@ -15,6 +15,9 @@ import {
   sellerCreateCatalogListing,
   sellerListMessagePacks,
   sellerGetPackMessages,
+  sellerSendPackMessage,
+  sellerListFeedback,
+  sellerGetOrderFeedback,
   sellerInventoryReport,
   sellerUpdateMyItem,
   sellerUploadListingPicture,
@@ -478,6 +481,120 @@ describe("seller-actions", () => {
       const marketplaceUrl = mockFetch.mock.calls[2][0] as string;
       expect(marketplaceUrl).toContain("/marketplace/messages/unread");
       expect(marketplaceUrl).toContain("user_id=10");
+    });
+  });
+
+  describe("sellerSendPackMessage", () => {
+    it("POSTs reply to pack thread with buyer_id", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ id: 10 }));
+      mockFetch.mockResolvedValueOnce(jsonResponse({ id: "msg-sent", status: "available" }));
+
+      const result = await sellerSendPackMessage(client, {
+        pack_id: "2000013192222661",
+        buyer_id: 3430802448,
+        text: "Hola, estamos investigando el envío.",
+      });
+      expect(result).toMatchObject({
+        api: "POST /messages/packs/{pack_id}/sellers/{seller_id}?tag=post_sale",
+        seller_id: 10,
+        pack_id: "2000013192222661",
+        buyer_id: 3430802448,
+      });
+      const url = mockFetch.mock.calls[1][0] as string;
+      expect(url).toContain("/messages/packs/2000013192222661/sellers/10");
+      expect(url).toContain("tag=post_sale");
+      const postInit = mockFetch.mock.calls[1][1] as RequestInit;
+      expect(JSON.parse(postInit.body as string)).toEqual({
+        from: { user_id: "10" },
+        to: { user_id: "3430802448" },
+        text: "Hola, estamos investigando el envío.",
+      });
+    });
+
+    it("infers buyer_id from pack thread when omitted", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ id: 10 }));
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({
+          messages: [{ from: { user_id: 3430802448 }, text: "No me llego el fono" }],
+        })
+      );
+      mockFetch.mockResolvedValueOnce(jsonResponse({ id: "msg-sent" }));
+
+      const result = await sellerSendPackMessage(client, {
+        pack_id: "2000013192222661",
+        text: "Lo revisamos ya.",
+      });
+      expect(result).toMatchObject({ buyer_id: 3430802448 });
+      const postInit = mockFetch.mock.calls[2][1] as RequestInit;
+      expect(JSON.parse(postInit.body as string).to).toEqual({ user_id: "3430802448" });
+    });
+  });
+
+  describe("sellerListFeedback", () => {
+    it("scans orders/search and fetches purchase feedback per order", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ id: 10 }));
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({
+          results: [{ id: 1001 }, { id: 1002 }],
+          paging: { total: 2, limit: 20, offset: 0 },
+        })
+      );
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({
+          purchase: {
+            id: 5040068164512,
+            role: "buyer",
+            rating: "positive",
+            message: "Excelente",
+          },
+        })
+      );
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({
+          purchase: null,
+          sale: { id: 1, rating: "positive" },
+        })
+      );
+
+      const result = await sellerListFeedback(client, { limit: 5 });
+      expect(result).toMatchObject({
+        api: "GET /orders/search?seller={seller_id} + GET /orders/{order_id}/feedback",
+        seller_id: 10,
+        orders_scanned: 2,
+        feedback_count: 1,
+      });
+      const feedback = (result as { feedback: Array<Record<string, unknown>> }).feedback;
+      expect(feedback[0]).toMatchObject({
+        order_id: 1001,
+        feedback_id: 5040068164512,
+        rating: "positive",
+        message: "Excelente",
+      });
+      const searchUrl = mockFetch.mock.calls[1][0] as string;
+      expect(searchUrl).toContain("/orders/search");
+      expect(searchUrl).toContain("seller=10");
+      const feedbackUrl = mockFetch.mock.calls[2][0] as string;
+      expect(feedbackUrl).toContain("/orders/1001/feedback");
+    });
+  });
+
+  describe("sellerGetOrderFeedback", () => {
+    it("returns purchase and sale sides for an owned order", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ id: 10 }));
+      mockFetch.mockResolvedValueOnce(jsonResponse({ id: 1001, seller: { id: 10 } }));
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({
+          purchase: { id: 99, rating: "neutral", message: "Ok" },
+          sale: { id: 88, rating: "positive" },
+        })
+      );
+
+      const result = await sellerGetOrderFeedback(client, { order_id: 1001 });
+      expect(result).toMatchObject({
+        api: "GET /orders/{order_id}/feedback",
+        order_id: 1001,
+        purchase: { id: 99, rating: "neutral" },
+      });
     });
   });
 

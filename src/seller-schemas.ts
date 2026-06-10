@@ -144,6 +144,15 @@ export interface SellerGetPackMessagesParams {
   mark_as_read?: boolean;
 }
 
+export interface SellerSendPackMessageParams {
+  pack_id: string;
+  /** Max 350 characters (seller post-sale limit). */
+  text: string;
+  /** Buyer user id. Auto-resolved from the pack thread when omitted. */
+  buyer_id?: number;
+  seller_id?: number;
+}
+
 export interface SellerItemVariationSummary {
   id: number;
   user_product_id?: string;
@@ -192,6 +201,11 @@ export interface SellerGetOrderDiscountsParams {
   order_id: number;
 }
 
+export interface SellerGetOrderFeedbackParams {
+  order_id: number;
+  seller_id?: number;
+}
+
 export interface SellerSearchClaimsParams {
   seller_id?: number;
   status?: string;
@@ -217,7 +231,9 @@ export interface SellerSubmitClaimActionParams {
 
 export interface SellerListFeedbackParams {
   seller_id?: number;
+  /** Max buyer feedback entries returned (default 10, max 50). */
   limit?: number;
+  /** Offset for GET /orders/search when scanning recent orders. */
   offset?: number;
 }
 

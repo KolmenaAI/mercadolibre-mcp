@@ -66,6 +66,7 @@ Non-ML: social publish, ads, CRM, approvals → Kolmena plugins / other integrat
 | `seller_list_pending_shipments` | composite |
 | `seller_list_message_packs` | `GET /messages/unread?role=seller&tag=post_sale` (domestic); `GET /marketplace/messages/unread` (global selling) |
 | `seller_get_pack_messages` | `GET /messages/packs/{id}/sellers/{seller_id}?tag=post_sale` |
+| `seller_send_pack_message` | `POST /messages/packs/{id}/sellers/{seller_id}?tag=post_sale` |
 | `seller_update_my_item` | `PUT /items/{id}` |
 | `seller_update_my_item_description` | `PUT /items/{id}/description` |
 
@@ -92,7 +93,8 @@ Workflow: `seller_get_me` → `get_domain_discovery` → `seller_get_listing_req
 | `seller_get_claim` | `GET /post-purchase/v1/claims/{id}` |
 | `seller_get_claim_returns` | `GET /post-purchase/v2/claims/{id}/returns` |
 | `seller_submit_claim_action` | `POST /post-purchase/v1/claims/{id}/actions` |
-| `seller_list_feedback` | `GET /feedback/receiver/{id}` |
+| `seller_list_feedback` | `GET /orders/search` + `GET /orders/{id}/feedback` (purchase side) |
+| `seller_get_order_feedback` | `GET /orders/{id}/feedback` |
 | `seller_reply_feedback` | `POST /feedback/{id}/reply` |
 | `seller_create_promotion_draft` | `POST /seller-promotions/promotions?app_version=v2` |
 

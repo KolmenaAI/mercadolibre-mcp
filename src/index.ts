@@ -63,6 +63,7 @@ import {
   sellerListPendingShipments,
   sellerListMessagePacks,
   sellerGetPackMessages,
+  sellerSendPackMessage,
   sellerUpdateMyItem,
   sellerUpdateMyItemDescription,
   sellerAddListingPictures,
@@ -70,6 +71,7 @@ import {
   sellerGetClaim,
   sellerGetClaimReturns,
   sellerSubmitClaimAction,
+  sellerGetOrderFeedback,
   sellerListFeedback,
   sellerReplyFeedback,
   sellerCreatePromotionDraft,
@@ -139,6 +141,8 @@ import type {
   SellerListPendingShipmentsParams,
   SellerListMessagePacksParams,
   SellerGetPackMessagesParams,
+  SellerSendPackMessageParams,
+  SellerGetOrderFeedbackParams,
   SellerUpdateMyItemParams,
   SellerUpdateMyItemDescriptionParams,
   SellerAddListingPicturesParams,
@@ -259,6 +263,10 @@ export function createMercadoLibreTools(accessToken?: string) {
         sellerListMessagePacks(client, params),
       seller_get_pack_messages: (params: SellerGetPackMessagesParams) =>
         sellerGetPackMessages(client, params),
+      seller_send_pack_message: (params: SellerSendPackMessageParams) =>
+        sellerSendPackMessage(client, params),
+      seller_get_order_feedback: (params: SellerGetOrderFeedbackParams) =>
+        sellerGetOrderFeedback(client, params),
       seller_update_my_item: (params: SellerUpdateMyItemParams) =>
         sellerUpdateMyItem(client, params),
       seller_update_my_item_description: (params: SellerUpdateMyItemDescriptionParams) =>

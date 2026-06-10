@@ -30,6 +30,7 @@ import type {
   SellerGetOrderDiscountsParams,
   SellerGetOrderParams,
   SellerGetOrderShipmentsParams,
+  SellerGetOrderFeedbackParams,
   SellerGetPackMessagesParams,
   SellerGetPromotionParams,
   SellerGetQuestionParams,
@@ -46,6 +47,7 @@ import type {
   SellerListPromotionsParams,
   SellerListUnansweredQuestionsParams,
   SellerReplyFeedbackParams,
+  SellerSendPackMessageParams,
   SellerSearchClaimsParams,
   SellerSearchOrdersParams,
   SellerSubmitClaimActionParams,
@@ -627,6 +629,82 @@ export async function sellerGetPackMessages(
   };
 }
 
+function extractBuyerIdFromPackThread(thread: unknown, sellerId: number): number | undefined {
+  if (typeof thread !== "object" || thread === null) {
+    return undefined;
+  }
+  const record = thread as Record<string, unknown>;
+  const nested = record.result;
+  const messagesSource =
+    typeof nested === "object" && nested !== null && Array.isArray((nested as Record<string, unknown>).messages)
+      ? (nested as Record<string, unknown>).messages
+      : record.messages;
+  if (!Array.isArray(messagesSource)) {
+    return undefined;
+  }
+  const messages = messagesSource as Array<Record<string, unknown>>;
+  for (const message of messages) {
+    const from = message.from as { user_id?: number | string } | undefined;
+    const fromId = from?.user_id !== undefined ? Number(from.user_id) : Number.NaN;
+    if (Number.isFinite(fromId) && fromId !== sellerId) {
+      return fromId;
+    }
+  }
+  for (const message of messages) {
+    const to = message.to as { user_id?: number | string } | undefined;
+    const toId = to?.user_id !== undefined ? Number(to.user_id) : Number.NaN;
+    if (Number.isFinite(toId) && toId !== sellerId) {
+      return toId;
+    }
+  }
+  return undefined;
+}
+
+export async function sellerSendPackMessage(
+  client: MercadoLibreClient,
+  params: SellerSendPackMessageParams
+): Promise<unknown> {
+  if (params.text.length === 0) {
+    throw new Error("Message text is required");
+  }
+  if (params.text.length > 350) {
+    throw new Error("Post-sale seller messages must be at most 350 characters");
+  }
+  const sellerId = await resolveSellerId(client, params.seller_id);
+  let buyerId = params.buyer_id;
+  if (buyerId === undefined) {
+    const thread = await client.get(
+      `/messages/packs/${encodeURIComponent(params.pack_id)}/sellers/${encodeURIComponent(String(sellerId))}`,
+      { tag: "post_sale", mark_as_read: "false" }
+    );
+    buyerId = extractBuyerIdFromPackThread(thread, sellerId);
+    if (buyerId === undefined) {
+      throw new Error(
+        "buyer_id is required when the pack thread has no buyer messages to infer the recipient"
+      );
+    }
+  }
+  const result = await client.post(
+    `/messages/packs/${encodeURIComponent(params.pack_id)}/sellers/${encodeURIComponent(String(sellerId))}`,
+    {
+      from: { user_id: String(sellerId) },
+      to: { user_id: String(buyerId) },
+      text: params.text,
+    },
+    { tag: "post_sale" }
+  );
+  return {
+    api: "POST /messages/packs/{pack_id}/sellers/{seller_id}?tag=post_sale",
+    seller_id: sellerId,
+    pack_id: params.pack_id,
+    buyer_id: buyerId,
+    char_count: params.text.length,
+    seller_max_message_length: 350,
+    note: "Replying to an existing buyer message does not require the action_guide flow. Seller-initiated first contact on Mercado Envíos 2 may require action_guide.",
+    result,
+  };
+}
+
 interface ItemVariationRow {
   id: number;
   user_product_id?: string;
@@ -934,39 +1012,139 @@ export async function sellerSubmitClaimAction(
   );
 }
 
+interface OrderFeedbackSide {
+  id?: number;
+  role?: string;
+  rating?: string;
+  message?: string | null;
+  reply?: string | null;
+  fulfilled?: boolean;
+  date_created?: string;
+  status?: string;
+  item?: unknown;
+  from?: unknown;
+  order_id?: number;
+}
+
+interface OrderFeedbackResponse {
+  sale?: OrderFeedbackSide | null;
+  purchase?: OrderFeedbackSide | null;
+}
+
+function hasBuyerFeedback(purchase: OrderFeedbackSide | null | undefined): boolean {
+  if (!purchase || typeof purchase !== "object") {
+    return false;
+  }
+  if (purchase.id !== undefined && purchase.id !== null) {
+    return true;
+  }
+  if (purchase.rating !== undefined && purchase.rating !== null && purchase.rating !== "") {
+    return true;
+  }
+  if (typeof purchase.message === "string" && purchase.message.trim().length > 0) {
+    return true;
+  }
+  return false;
+}
+
+export async function sellerGetOrderFeedback(
+  client: MercadoLibreClient,
+  params: SellerGetOrderFeedbackParams
+): Promise<unknown> {
+  const sellerId = await resolveSellerId(client, params.seller_id);
+  const order = await client.get<Record<string, unknown>>(
+    `/orders/${encodeURIComponent(String(params.order_id))}`
+  );
+  const orderSeller = order.seller as { id?: number } | undefined;
+  if (orderSeller?.id !== undefined && orderSeller.id !== sellerId) {
+    throw new MercadoLibreError(
+      "GET",
+      `/orders/${params.order_id}`,
+      403,
+      JSON.stringify({ message: "Order does not belong to authenticated seller" })
+    );
+  }
+  const feedback = await client.get<OrderFeedbackResponse>(
+    `/orders/${encodeURIComponent(String(params.order_id))}/feedback`
+  );
+  return {
+    api: "GET /orders/{order_id}/feedback",
+    seller_id: sellerId,
+    order_id: params.order_id,
+    sale: feedback.sale ?? null,
+    purchase: feedback.purchase ?? null,
+    note: "Buyer feedback received by the seller is the purchase side. Use purchase.id with seller_reply_feedback.",
+    result: feedback,
+  };
+}
+
 export async function sellerListFeedback(
   client: MercadoLibreClient,
   params: SellerListFeedbackParams
 ): Promise<unknown> {
   const sellerId = await resolveSellerId(client, params.seller_id);
-  const qp: Record<string, string> = {
-    limit: String(Math.min(params.limit ?? 20, 50)),
+  const feedbackLimit = Math.min(params.limit ?? 10, 50);
+  const ordersScanLimit = Math.min(Math.max(feedbackLimit * 3, 20), 50);
+  const searchQp: Record<string, string> = {
+    seller: String(sellerId),
+    sort: "date_desc",
+    limit: String(ordersScanLimit),
   };
   if (params.offset !== undefined) {
-    qp.offset = String(params.offset);
+    searchQp.offset = String(params.offset);
   }
-  try {
-    const result = await client.get(
-      `/feedback/receiver/${encodeURIComponent(String(sellerId))}`,
-      qp
-    );
-    return {
-      api: "GET /feedback/receiver/{user_id}",
-      seller_id: sellerId,
-      result,
-    };
-  } catch (error) {
-    if (error instanceof MercadoLibreError && (error.status === 403 || error.status === 404)) {
-      return {
-        api: "GET /feedback/receiver/{user_id}",
-        seller_id: sellerId,
-        unavailable: true,
-        status: error.status,
-        message: "Feedback API not available for this app.",
-      };
+  const searchResult = await client.get<OrdersSearchResponse>("/orders/search", searchQp);
+  const orders = searchResult.results ?? [];
+  const feedbackEntries: Array<Record<string, unknown>> = [];
+  const fetchErrors: Array<{ order_id: number; status?: number; message: string }> = [];
+
+  for (const order of orders) {
+    if (feedbackEntries.length >= feedbackLimit) {
+      break;
     }
-    throw error;
+    const orderId = order.id;
+    if (typeof orderId !== "number") {
+      continue;
+    }
+    try {
+      const feedback = await client.get<OrderFeedbackResponse>(
+        `/orders/${encodeURIComponent(String(orderId))}/feedback`
+      );
+      const purchase = feedback.purchase;
+      if (!hasBuyerFeedback(purchase)) {
+        continue;
+      }
+      feedbackEntries.push({
+        order_id: orderId,
+        feedback_id: purchase?.id ?? null,
+        role: "buyer_to_seller",
+        rating: purchase?.rating ?? null,
+        message: purchase?.message ?? null,
+        reply: purchase?.reply ?? null,
+        fulfilled: purchase?.fulfilled ?? null,
+        date_created: purchase?.date_created ?? null,
+        status: purchase?.status ?? null,
+        item: purchase?.item ?? null,
+        from: purchase?.from ?? null,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const status = error instanceof MercadoLibreError ? error.status : undefined;
+      fetchErrors.push({ order_id: orderId, status, message });
+    }
   }
+
+  return {
+    api: "GET /orders/search?seller={seller_id} + GET /orders/{order_id}/feedback",
+    seller_id: sellerId,
+    note:
+      "Mercado Libre has no bulk feedback list endpoint. Buyer feedback is the purchase side of GET /orders/{id}/feedback. Use feedback_id with seller_reply_feedback.",
+    orders_scanned: orders.length,
+    feedback_count: feedbackEntries.length,
+    feedback: feedbackEntries,
+    paging: searchResult.paging ?? null,
+    fetch_errors: fetchErrors.length > 0 ? fetchErrors : undefined,
+  };
 }
 
 export async function sellerReplyFeedback(

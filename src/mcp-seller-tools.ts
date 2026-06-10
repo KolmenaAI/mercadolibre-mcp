@@ -474,6 +474,18 @@ export function registerSellerMercadoLibreTools(server: McpServer, tools: Tools)
   );
 
   server.tool(
+    "seller_send_pack_message",
+    "Send a post-sale reply to the buyer (POST /messages/packs/{id}/sellers/{seller_id}?tag=post_sale). Max 350 chars. Confirm with seller before calling. buyer_id optional when the pack thread already has buyer messages.",
+    {
+      pack_id: z.string(),
+      text: z.string().max(350),
+      buyer_id: z.number().optional(),
+      seller_id: z.number().optional(),
+    },
+    async (params) => toolResult(() => tools.seller_send_pack_message(params))()
+  );
+
+  server.tool(
     "seller_update_my_item",
     "Update price, stock, or status only (PUT /items/{id}). Does NOT add pictures — use seller_add_listing_pictures. Variation-aware for price/stock.",
     {
@@ -563,8 +575,18 @@ export function registerSellerMercadoLibreTools(server: McpServer, tools: Tools)
   );
 
   server.tool(
+    "seller_get_order_feedback",
+    "Feedback for one order (GET /orders/{order_id}/feedback). purchase = buyer feedback to seller; sale = seller feedback to buyer.",
+    {
+      order_id: z.number(),
+      seller_id: z.number().optional(),
+    },
+    async (params) => toolResult(() => tools.seller_get_order_feedback(params))()
+  );
+
+  server.tool(
     "seller_list_feedback",
-    "Feedback received as seller.",
+    "Recent buyer feedback received as seller. Scans GET /orders/search then GET /orders/{id}/feedback per order (purchase side). No bulk /feedback/receiver endpoint exists.",
     {
       seller_id: z.number().optional(),
       limit: z.number().optional(),

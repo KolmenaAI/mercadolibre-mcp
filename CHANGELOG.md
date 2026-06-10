@@ -1,5 +1,20 @@
 # Changelog — @kolmena-ai/meli-mcp
 
+## 1.10.6
+
+### Fix `seller_list_feedback` + add `seller_get_order_feedback`
+
+`GET /feedback/receiver/{user_id}` is not in Mercado Libre docs and returns 404.
+
+- **`seller_list_feedback`** — scans `GET /orders/search?seller={id}` then `GET /orders/{id}/feedback` per order; returns the **purchase** side (buyer → seller). Use `feedback_id` with `seller_reply_feedback`.
+- **`seller_get_order_feedback`** — single-order `GET /orders/{order_id}/feedback` with seller ownership check.
+
+### Add `seller_send_pack_message`
+
+Post-sale replies were read-only (`seller_list_message_packs`, `seller_get_pack_messages`) with no send tool.
+
+- **`seller_send_pack_message`** — `POST /messages/packs/{pack_id}/sellers/{seller_id}?tag=post_sale` (max 350 chars). `buyer_id` optional when inferable from the pack thread.
+
 ## 1.10.5
 
 ### Fix post-sale messages endpoints (`seller_list_message_packs`, `seller_get_pack_messages`)

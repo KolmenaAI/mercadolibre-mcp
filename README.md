@@ -248,6 +248,7 @@ Upstream `@dan1d/mercadolibre-mcp@1.0.2` shipped 8 buyer-only tools. This fork s
 | `seller_answer_question` | Post an answer (max 2000 chars). |
 | `seller_list_message_packs` | Unread post-sale packs (`GET /messages/unread?role=seller&tag=post_sale`). |
 | `seller_get_pack_messages` | Thread for a pack (`GET /messages/packs/{id}/sellers/{seller_id}?tag=post_sale`). |
+| `seller_send_pack_message` | Reply to buyer in a post-sale pack (`POST /messages/packs/{id}/sellers/{seller_id}?tag=post_sale`, max 350 chars). |
 
 ### Seller — listing mutations
 
@@ -272,7 +273,8 @@ Upstream `@dan1d/mercadolibre-mcp@1.0.2` shipped 8 buyer-only tools. This fork s
 | `seller_get_claim` | Claim detail. |
 | `seller_get_claim_returns` | Return status for a claim. |
 | `seller_submit_claim_action` | Submit an action on a claim. |
-| `seller_list_feedback` | Feedback received as seller. |
+| `seller_list_feedback` | Recent buyer feedback (orders search + per-order feedback). |
+| `seller_get_order_feedback` | Feedback for one order (`purchase` = buyer → seller). |
 | `seller_reply_feedback` | Reply to buyer feedback. |
 
 ---
