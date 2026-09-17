@@ -19,7 +19,7 @@
 # `node /app/bin/mcp-server.mjs` with no flag, defaulting to stdio.)
 
 ARG NODE_IMAGE_TAG=24.16.0-alpine3.23
-ARG PNPM_VERSION=11.4.0
+ARG PNPM_VERSION=11
 
 ############################
 # Stage 1 — build the MCP server with pnpm
